@@ -119,8 +119,11 @@
           </div>
 
           <div class="wdyc-footer">
-            <button class="wdyc-btn wdyc-btn-skip">Save &amp; Watch</button>
-            <button class="wdyc-btn wdyc-btn-save" disabled>Save</button>
+            <button class="wdyc-btn-just-watch">Just Watch</button>
+            <div class="wdyc-footer-main">
+              <button class="wdyc-btn wdyc-btn-skip">Save &amp; Watch</button>
+              <button class="wdyc-btn wdyc-btn-save" disabled>Save</button>
+            </div>
           </div>
         </div>
       `;
@@ -153,6 +156,7 @@
 
       saveBtn.addEventListener('click', () => doSave(false));
       overlay.querySelector('.wdyc-btn-skip').addEventListener('click', () => doSave(true));
+      overlay.querySelector('.wdyc-btn-just-watch').addEventListener('click', () => close({ save: false, watch: true }));
       overlay.querySelector('.wdyc-close').addEventListener('click', () => close({ save: false, watch: false }));
       overlay.addEventListener('click', (e) => { if (e.target === overlay) close({ save: false, watch: false }); });
 
