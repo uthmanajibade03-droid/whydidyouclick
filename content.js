@@ -119,8 +119,8 @@
           </div>
 
           <div class="wdyc-footer">
-            <button class="wdyc-btn wdyc-btn-skip">Just Watch</button>
-            <button class="wdyc-btn wdyc-btn-save" disabled>Save to Board</button>
+            <button class="wdyc-btn wdyc-btn-skip">Save &amp; Watch</button>
+            <button class="wdyc-btn wdyc-btn-save" disabled>Save</button>
           </div>
         </div>
       `;
@@ -145,20 +145,20 @@
         resolve(result);
       };
 
-      const doSave = () => {
+      const doSave = (andWatch) => {
         if (!selectedType) return;
         const note = overlay.querySelector('.wdyc-note').value.trim();
-        close({ save: true, type: selectedType, note });
+        close({ save: true, watch: !!andWatch, type: selectedType, note });
       };
 
-      saveBtn.addEventListener('click', doSave);
-      overlay.querySelector('.wdyc-btn-skip').addEventListener('click', () => close({ save: false }));
-      overlay.querySelector('.wdyc-close').addEventListener('click', () => close({ save: false }));
-      overlay.addEventListener('click', (e) => { if (e.target === overlay) close({ save: false }); });
+      saveBtn.addEventListener('click', () => doSave(false));
+      overlay.querySelector('.wdyc-btn-skip').addEventListener('click', () => doSave(true));
+      overlay.querySelector('.wdyc-close').addEventListener('click', () => close({ save: false, watch: true }));
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) close({ save: false, watch: true }); });
 
       overlay.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') close({ save: false });
-        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && selectedType) doSave();
+        if (e.key === 'Escape') close({ save: false, watch: true });
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && selectedType) doSave(false);
         // Keyboard shortcut: T = title, H = thumbnail, B = both
         if (!e.target.matches('textarea')) {
           if (e.key.toLowerCase() === 't') overlay.querySelector('[data-type="title"]').click();
@@ -219,7 +219,9 @@
         await saveEntry(videoInfo, result.type, result.note);
       }
 
-      window.location.href = videoInfo.url;
+      if (result.watch) {
+        window.location.href = videoInfo.url;
+      }
     },
     true
   );
