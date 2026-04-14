@@ -44,15 +44,9 @@
     let thumbnail = `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
 
     if (container) {
-      // Try selectors from most to least specific — covers home, search, sidebar, shorts
       const titleSelectors = [
-        'h3 #video-title',
-        'h4 #video-title',
-        '#video-title',
-        'yt-formatted-string#video-title',
-        'span#video-title',
-        'h3',
-        'h4',
+        'h3 #video-title', 'h4 #video-title', '#video-title',
+        'yt-formatted-string#video-title', 'span#video-title', 'h3', 'h4',
       ];
       for (const sel of titleSelectors) {
         const el = container.querySelector(sel);
@@ -60,28 +54,150 @@
         if (text) { title = text; break; }
       }
 
-      // Thumbnail: prefer the actual img src, fall back to CDN
       const thumbEl = container.querySelector('ytd-thumbnail img, #thumbnail img, yt-image img');
       if (thumbEl && thumbEl.src && !thumbEl.src.startsWith('data:')) {
         thumbnail = thumbEl.src;
       }
     }
 
-    // Fallback 1: aria-label on the thumbnail <a> (YouTube sets this reliably)
     if (!title) {
-      const thumbLink = container
-        ? container.querySelector('a#thumbnail, ytd-thumbnail a')
-        : null;
+      const thumbLink = container ? container.querySelector('a#thumbnail, ytd-thumbnail a') : null;
       title = (thumbLink || link).getAttribute('aria-label') || '';
     }
-
-    // Fallback 2: title/aria-label on the clicked link itself
     if (!title) {
       title = link.getAttribute('title') || link.getAttribute('aria-label') || '';
     }
 
     return { videoId, title, thumbnail, url: href };
   }
+
+  // ─── Persist ─────────────────────────────────────────────────────────────
+
+  function saveEntry(videoInfo, type, note) {
+    return new Promise((resolve) => {
+      const entry = {
+        id: Date.now(),
+        videoId: videoInfo.videoId,
+        url: videoInfo.url,
+        type,
+        note,
+        date: new Date().toISOString(),
+        title: (type === 'title' || type === 'both') ? videoInfo.title : null,
+        thumbnail: (type === 'thumbnail' || type === 'both') ? videoInfo.thumbnail : null,
+      };
+
+      chrome.storage.local.get(['entries'], (result) => {
+        const entries = result.entries || [];
+        entries.unshift(entry);
+        if (entries.length > 1000) entries.splice(1000);
+        chrome.storage.local.set({ entries }, resolve);
+      });
+    });
+  }
+
+  // ─── Drop zone ───────────────────────────────────────────────────────────
+
+  let dropZoneEl = null;
+  let draggedInfo = null;
+
+  function getDropZone() {
+    if (dropZoneEl) return dropZoneEl;
+
+    dropZoneEl = document.createElement('div');
+    dropZoneEl.className = 'wdyc-drop-zone';
+    dropZoneEl.innerHTML = `
+      <div class="wdyc-dz-idle">
+        <span class="wdyc-dz-icon">💡</span>
+        <p class="wdyc-dz-label">Drop to save</p>
+        <p class="wdyc-dz-sub">Saves title &amp; thumbnail</p>
+      </div>
+      <div class="wdyc-dz-saved">
+        <span class="wdyc-dz-icon">✅</span>
+        <p class="wdyc-dz-label">Saved!</p>
+      </div>
+    `;
+
+    dropZoneEl.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      dropZoneEl.classList.add('wdyc-dz-over');
+    });
+
+    dropZoneEl.addEventListener('dragleave', (e) => {
+      if (!dropZoneEl.contains(e.relatedTarget)) {
+        dropZoneEl.classList.remove('wdyc-dz-over');
+      }
+    });
+
+    dropZoneEl.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      dropZoneEl.classList.remove('wdyc-dz-over');
+      if (!draggedInfo) return;
+
+      await saveEntry(draggedInfo, 'both', '');
+      draggedInfo = null;
+
+      dropZoneEl.classList.add('wdyc-dz-success');
+      setTimeout(() => {
+        dropZoneEl.classList.remove('wdyc-dz-success', 'wdyc-dz-visible');
+      }, 1200);
+    });
+
+    document.body.appendChild(dropZoneEl);
+    return dropZoneEl;
+  }
+
+  // ─── Make cards draggable ────────────────────────────────────────────────
+
+  const CARD_SELECTOR = [
+    'ytd-video-renderer',
+    'ytd-rich-item-renderer',
+    'ytd-compact-video-renderer',
+    'ytd-grid-video-renderer',
+    'ytd-reel-item-renderer',
+  ].join(', ');
+
+  function makeDraggable() {
+    document.querySelectorAll(CARD_SELECTOR + ':not([data-wdyc-drag])').forEach(card => {
+      card.dataset.wdycDrag = '1';
+      card.setAttribute('draggable', 'true');
+
+      card.addEventListener('dragstart', (e) => {
+        const link = card.querySelector('a[href*="/watch?v="], a[href*="/shorts/"]');
+        if (!link) { e.preventDefault(); return; }
+
+        const info = getVideoInfo(link);
+        if (!info) { e.preventDefault(); return; }
+
+        draggedInfo = info;
+        e.dataTransfer.effectAllowed = 'copy';
+        e.dataTransfer.setData('text/plain', info.videoId);
+
+        const dz = getDropZone();
+        requestAnimationFrame(() => dz.classList.add('wdyc-dz-visible'));
+      });
+
+      card.addEventListener('dragend', () => {
+        const dz = getDropZone();
+        // Give the drop handler time to fire first
+        setTimeout(() => {
+          if (!dz.classList.contains('wdyc-dz-success')) {
+            dz.classList.remove('wdyc-dz-visible', 'wdyc-dz-over');
+          }
+          draggedInfo = null;
+        }, 80);
+      });
+    });
+  }
+
+  // Re-run whenever YouTube adds new video cards (SPA navigation / infinite scroll)
+  let debounceTimer = null;
+  new MutationObserver(() => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(makeDraggable, 400);
+  }).observe(document.body, { childList: true, subtree: true });
+
+  makeDraggable();
 
   // ─── Modal ───────────────────────────────────────────────────────────────
 
@@ -152,10 +268,8 @@
       `;
 
       let selectedType = null;
-
       const saveBtn = overlay.querySelector('.wdyc-btn-save');
 
-      // Type picker
       overlay.querySelectorAll('.wdyc-type-btn').forEach(btn => {
         btn.addEventListener('click', () => {
           overlay.querySelectorAll('.wdyc-type-btn').forEach(b => b.classList.remove('selected'));
@@ -186,7 +300,6 @@
       overlay.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') close({ save: false, watch: false });
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && selectedType) doSave(false);
-        // Keyboard shortcut: T = title, H = thumbnail, B = both
         if (!e.target.matches('textarea')) {
           if (e.key.toLowerCase() === 't') overlay.querySelector('[data-type="title"]').click();
           if (e.key.toLowerCase() === 'h') overlay.querySelector('[data-type="thumbnail"]').click();
@@ -195,30 +308,6 @@
       });
 
       document.body.appendChild(overlay);
-    });
-  }
-
-  // ─── Persist ─────────────────────────────────────────────────────────────
-
-  function saveEntry(videoInfo, type, note) {
-    return new Promise((resolve) => {
-      const entry = {
-        id: Date.now(),
-        videoId: videoInfo.videoId,
-        url: videoInfo.url,
-        type,                                                     // 'title' | 'thumbnail' | 'both'
-        note,
-        date: new Date().toISOString(),
-        title: (type === 'title' || type === 'both') ? videoInfo.title : null,
-        thumbnail: (type === 'thumbnail' || type === 'both') ? videoInfo.thumbnail : null,
-      };
-
-      chrome.storage.local.get(['entries'], (result) => {
-        const entries = result.entries || [];
-        entries.unshift(entry);
-        if (entries.length > 1000) entries.splice(1000);
-        chrome.storage.local.set({ entries }, resolve);
-      });
     });
   }
 

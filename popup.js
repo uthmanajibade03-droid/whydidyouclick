@@ -169,6 +169,14 @@ chrome.storage.local.get(['entries'], (result) => {
   refresh();
 });
 
+// Real-time update — fires the moment a drag-save or modal-save writes to storage
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.entries) {
+    allEntries = changes.entries.newValue || [];
+    refresh();
+  }
+});
+
 // Tabs
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {

@@ -1,4 +1,59 @@
-/* ── Why Did You Click? — Inspiration Board modal ───────────────────────── */
+/* ── Why Did You Click? — Inspiration Board modal + drop zone ───────────── */
+
+/* ── Drop zone (slides in from right when dragging) ─────────────────────── */
+
+.wdyc-drop-zone {
+  position: fixed !important;
+  right: 24px;
+  top: 50%;
+  transform: translateY(-50%) translateX(220px);
+  width: 148px;
+  background: #fff;
+  border: 2.5px dashed #d5d5d5;
+  border-radius: 18px;
+  padding: 24px 14px;
+  text-align: center;
+  z-index: 2147483646 !important;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.18);
+  transition: transform 0.26s cubic-bezier(0.2, 0, 0.2, 1),
+              border-color 0.15s, background 0.15s;
+  pointer-events: none;
+  font-family: 'Roboto', Arial, sans-serif;
+}
+
+.wdyc-drop-zone.wdyc-dz-visible {
+  transform: translateY(-50%) translateX(0);
+  pointer-events: all;
+}
+
+.wdyc-drop-zone.wdyc-dz-over {
+  border-color: #ff0000;
+  border-style: solid;
+  background: #fff5f5;
+  transform: translateY(-50%) translateX(0) scale(1.04);
+}
+
+.wdyc-drop-zone.wdyc-dz-success {
+  border-color: #22c55e;
+  border-style: solid;
+  background: #f0fdf4;
+}
+
+.wdyc-dz-idle,
+.wdyc-dz-saved {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.wdyc-dz-saved { display: none; }
+.wdyc-dz-success .wdyc-dz-idle  { display: none; }
+.wdyc-dz-success .wdyc-dz-saved { display: flex; }
+
+.wdyc-dz-icon  { font-size: 30px; line-height: 1; }
+.wdyc-dz-label { font-size: 13px; font-weight: 700; color: #0f0f0f; margin: 0; }
+.wdyc-dz-sub   { font-size: 11px; color: #999; margin: 0; line-height: 1.4; }
 
 .wdyc-overlay {
   position: fixed !important;
