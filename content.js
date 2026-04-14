@@ -4,7 +4,7 @@
 
   let modalOpen = false;
 
-  // ─── Helpers ──────────────────────────────────────────────────────────────
+  // ─── Helpers ─────────────────────────────────────────────────────────────
 
   function extractVideoId(href) {
     let m = href.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
@@ -23,22 +23,11 @@
       .replace(/"/g, '&quot;');
   }
 
-  // ─── Extract info from the clicked video card ──────────────────────────────
-
-  function getVideoInfo(link, clickedEl) {
+  function getVideoInfo(link) {
     const href = link.href;
     const videoId = extractVideoId(href);
     if (!videoId) return null;
 
-    // Determine intent from which part of the card was clicked
-    const isThumbClick = !!clickedEl.closest(
-      'ytd-thumbnail, #thumbnail, .ytd-thumbnail, yt-image, ytd-rich-thumbnail'
-    );
-    const isTitleClick = !!clickedEl.closest(
-      '#video-title, h3.ytd-video-renderer, .title.ytd-compact-video-renderer, yt-formatted-string#video-title'
-    );
-
-    // Walk up to the nearest video card container
     const container = link.closest([
       'ytd-video-renderer',
       'ytd-rich-item-renderer',
@@ -49,13 +38,12 @@
       'ytd-movie-renderer',
     ].join(', '));
 
-    // Fallback thumbnail from YouTube's CDN (always available)
-    let thumbnail = `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
     let title = '';
+    let thumbnail = `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
 
     if (container) {
       const titleEl = container.querySelector(
-        '#video-title, yt-formatted-string#video-title, span.yt-formatted-string#video-title, a.yt-simple-endpoint'
+        '#video-title, yt-formatted-string#video-title, span.yt-formatted-string#video-title'
       );
       if (titleEl) title = titleEl.textContent.trim();
 
@@ -69,21 +57,10 @@
       title = link.getAttribute('aria-label') || link.getAttribute('title') || '';
     }
 
-    // Pre-check save options based on where the user clicked
-    let defaultSaveTitle = true;
-    let defaultSaveThumbnail = true;
-
-    if (isThumbClick && !isTitleClick) {
-      defaultSaveTitle = false;
-    } else if (isTitleClick && !isThumbClick) {
-      defaultSaveThumbnail = false;
-    }
-    // Clicking anywhere else (e.g. the card itself) → save both
-
-    return { videoId, title, thumbnail, url: href, defaultSaveTitle, defaultSaveThumbnail };
+    return { videoId, title, thumbnail, url: href };
   }
 
-  // ─── Modal ─────────────────────────────────────────────────────────────────
+  // ─── Modal ───────────────────────────────────────────────────────────────
 
   function showModal(videoInfo) {
     return new Promise((resolve) => {
@@ -91,10 +68,10 @@
       overlay.className = 'wdyc-overlay';
 
       overlay.innerHTML = `
-        <div class="wdyc-modal" role="dialog" aria-modal="true" aria-label="Why did you click this?">
+        <div class="wdyc-modal" role="dialog" aria-modal="true">
           <div class="wdyc-header">
-            <span class="wdyc-icon" aria-hidden="true">🤔</span>
-            <h2>Why did you click this?</h2>
+            <span class="wdyc-header-icon">💡</span>
+            <h2>Save to Inspiration Board</h2>
             <button class="wdyc-close" title="Close (Esc)">✕</button>
           </div>
 
@@ -102,7 +79,7 @@
             <img
               class="wdyc-thumb"
               src="${escapeHtml(videoInfo.thumbnail)}"
-              alt="Video thumbnail"
+              alt="Thumbnail"
               onerror="this.style.display='none'"
             />
             <span class="wdyc-video-title">
@@ -111,33 +88,56 @@
           </div>
 
           <div class="wdyc-body">
-            <label class="wdyc-label" for="wdyc-reason-input">Your reason</label>
-            <textarea
-              id="wdyc-reason-input"
-              class="wdyc-reason"
-              placeholder="I clicked this because…"
-              rows="3"
-            ></textarea>
-
-            <div class="wdyc-save-options">
-              <span class="wdyc-save-label">Save:</span>
-              <label class="wdyc-checkbox-label">
-                <input type="checkbox" class="wdyc-check-title" ${videoInfo.defaultSaveTitle ? 'checked' : ''}>
-                Title
-              </label>
-              <label class="wdyc-checkbox-label">
-                <input type="checkbox" class="wdyc-check-thumb" ${videoInfo.defaultSaveThumbnail ? 'checked' : ''}>
-                Thumbnail
-              </label>
+            <p class="wdyc-section-label">What's inspiring you?</p>
+            <div class="wdyc-type-picker">
+              <button class="wdyc-type-btn" data-type="title">
+                <span class="wdyc-type-icon">📝</span>
+                <span class="wdyc-type-name">Title</span>
+                <span class="wdyc-type-desc">The wording caught my eye</span>
+              </button>
+              <button class="wdyc-type-btn" data-type="thumbnail">
+                <span class="wdyc-type-icon">🖼</span>
+                <span class="wdyc-type-name">Thumbnail</span>
+                <span class="wdyc-type-desc">The visual design is great</span>
+              </button>
+              <button class="wdyc-type-btn" data-type="both">
+                <span class="wdyc-type-icon">✨</span>
+                <span class="wdyc-type-name">Both</span>
+                <span class="wdyc-type-desc">The full package works</span>
+              </button>
             </div>
+
+            <label class="wdyc-section-label" for="wdyc-note">
+              Note <span class="wdyc-optional">(optional)</span>
+            </label>
+            <textarea
+              id="wdyc-note"
+              class="wdyc-note"
+              placeholder="What specifically inspires you? e.g. "Love the color contrast" or "Bold curiosity gap""
+              rows="2"
+            ></textarea>
           </div>
 
           <div class="wdyc-footer">
             <button class="wdyc-btn wdyc-btn-skip">Just Watch</button>
-            <button class="wdyc-btn wdyc-btn-save">Save &amp; Watch</button>
+            <button class="wdyc-btn wdyc-btn-save" disabled>Save to Board</button>
           </div>
         </div>
       `;
+
+      let selectedType = null;
+
+      const saveBtn = overlay.querySelector('.wdyc-btn-save');
+
+      // Type picker
+      overlay.querySelectorAll('.wdyc-type-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          overlay.querySelectorAll('.wdyc-type-btn').forEach(b => b.classList.remove('selected'));
+          btn.classList.add('selected');
+          selectedType = btn.dataset.type;
+          saveBtn.disabled = false;
+        });
+      });
 
       const close = (result) => {
         overlay.remove();
@@ -146,74 +146,67 @@
       };
 
       const doSave = () => {
-        const reason = overlay.querySelector('.wdyc-reason').value.trim();
-        const saveTitle = overlay.querySelector('.wdyc-check-title').checked;
-        const saveThumbnail = overlay.querySelector('.wdyc-check-thumb').checked;
-        close({ save: true, reason, saveTitle, saveThumbnail });
+        if (!selectedType) return;
+        const note = overlay.querySelector('.wdyc-note').value.trim();
+        close({ save: true, type: selectedType, note });
       };
 
-      overlay.querySelector('.wdyc-btn-save').addEventListener('click', doSave);
+      saveBtn.addEventListener('click', doSave);
       overlay.querySelector('.wdyc-btn-skip').addEventListener('click', () => close({ save: false }));
       overlay.querySelector('.wdyc-close').addEventListener('click', () => close({ save: false }));
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) close({ save: false }); });
 
-      // Click outside modal → dismiss
-      overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) close({ save: false });
-      });
-
-      // Keyboard shortcuts
       overlay.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') close({ save: false });
-        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) doSave();
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && selectedType) doSave();
+        // Keyboard shortcut: T = title, H = thumbnail, B = both
+        if (!e.target.matches('textarea')) {
+          if (e.key.toLowerCase() === 't') overlay.querySelector('[data-type="title"]').click();
+          if (e.key.toLowerCase() === 'h') overlay.querySelector('[data-type="thumbnail"]').click();
+          if (e.key.toLowerCase() === 'b') overlay.querySelector('[data-type="both"]').click();
+        }
       });
 
       document.body.appendChild(overlay);
-
-      // Focus textarea after paint
-      requestAnimationFrame(() => {
-        const ta = overlay.querySelector('.wdyc-reason');
-        if (ta) ta.focus();
-      });
     });
   }
 
-  // ─── Persist entry ─────────────────────────────────────────────────────────
+  // ─── Persist ─────────────────────────────────────────────────────────────
 
-  function saveEntry(videoInfo, reason, saveTitle, saveThumbnail) {
+  function saveEntry(videoInfo, type, note) {
     return new Promise((resolve) => {
       const entry = {
         id: Date.now(),
         videoId: videoInfo.videoId,
         url: videoInfo.url,
-        reason: reason || '',
+        type,                                                     // 'title' | 'thumbnail' | 'both'
+        note,
         date: new Date().toISOString(),
-        title: saveTitle ? videoInfo.title : null,
-        thumbnail: saveThumbnail ? videoInfo.thumbnail : null,
+        title: (type === 'title' || type === 'both') ? videoInfo.title : null,
+        thumbnail: (type === 'thumbnail' || type === 'both') ? videoInfo.thumbnail : null,
       };
 
       chrome.storage.local.get(['entries'], (result) => {
         const entries = result.entries || [];
         entries.unshift(entry);
-        if (entries.length > 500) entries.splice(500); // rolling cap
+        if (entries.length > 1000) entries.splice(1000);
         chrome.storage.local.set({ entries }, resolve);
       });
     });
   }
 
-  // ─── Click interception ────────────────────────────────────────────────────
+  // ─── Intercept clicks ─────────────────────────────────────────────────────
 
   document.addEventListener(
     'click',
     async function (e) {
       if (modalOpen) return;
-
-      // Only plain left-clicks (no open-in-new-tab shortcuts)
       if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
 
       const link = e.target.closest('a[href*="/watch?v="], a[href*="/shorts/"]');
       if (!link) return;
 
-      const videoInfo = getVideoInfo(link, e.target);
+      const videoInfo = getVideoInfo(link);
       if (!videoInfo) return;
 
       e.preventDefault();
@@ -223,12 +216,11 @@
       const result = await showModal(videoInfo);
 
       if (result.save) {
-        await saveEntry(videoInfo, result.reason, result.saveTitle, result.saveThumbnail);
+        await saveEntry(videoInfo, result.type, result.note);
       }
 
-      // Navigate to the video (full load — reliable across YouTube SPA state)
       window.location.href = videoInfo.url;
     },
-    true // capture phase — fires before YouTube's own handlers
+    true
   );
 })();

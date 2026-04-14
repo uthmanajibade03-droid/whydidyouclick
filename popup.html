@@ -2,30 +2,34 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Why Did You Click?</title>
+  <title>Inspiration Board</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
 
   <div class="header">
-    <div class="header-title">
-      <span class="header-icon">🤔</span>
-      <h1>Why Did You Click?</h1>
+    <div class="header-left">
+      <span class="header-icon">💡</span>
+      <div>
+        <h1>Inspiration Board</h1>
+        <p class="header-sub">Your saved YouTube references</p>
+      </div>
     </div>
-    <div class="header-actions">
-      <span id="entry-count" class="entry-count" title="Saved entries"></span>
-      <button id="btn-clear-all" class="icon-btn" title="Clear all">🗑</button>
+    <button id="btn-clear-all" class="icon-btn" title="Clear all">🗑</button>
+  </div>
+
+  <div class="toolbar">
+    <div class="tabs">
+      <button class="tab active" data-filter="all">All <span class="tab-count" id="count-all"></span></button>
+      <button class="tab" data-filter="thumbnail">Thumbnails <span class="tab-count" id="count-thumbnail"></span></button>
+      <button class="tab" data-filter="title">Titles <span class="tab-count" id="count-title"></span></button>
+    </div>
+    <div class="search-wrap">
+      <input type="text" id="search" placeholder="Search…" autocomplete="off">
     </div>
   </div>
 
-  <div class="search-bar">
-    <span class="search-icon">🔍</span>
-    <input type="text" id="search" placeholder="Search reasons or titles…" autocomplete="off">
-    <button id="btn-clear-search" class="clear-search" title="Clear search" hidden>✕</button>
-  </div>
-
-  <div id="entries-list"></div>
+  <div id="board"></div>
 
   <script src="popup.js"></script>
 </body>
