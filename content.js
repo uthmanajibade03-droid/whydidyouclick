@@ -36,25 +36,48 @@
       'ytd-reel-item-renderer',
       'ytd-playlist-panel-video-renderer',
       'ytd-movie-renderer',
+      'ytd-radio-renderer',
+      'ytd-channel-video-player-renderer',
     ].join(', '));
 
     let title = '';
     let thumbnail = `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
 
     if (container) {
-      const titleEl = container.querySelector(
-        '#video-title, yt-formatted-string#video-title, span.yt-formatted-string#video-title'
-      );
-      if (titleEl) title = titleEl.textContent.trim();
+      // Try selectors from most to least specific — covers home, search, sidebar, shorts
+      const titleSelectors = [
+        'h3 #video-title',
+        'h4 #video-title',
+        '#video-title',
+        'yt-formatted-string#video-title',
+        'span#video-title',
+        'h3',
+        'h4',
+      ];
+      for (const sel of titleSelectors) {
+        const el = container.querySelector(sel);
+        const text = el && (el.innerText || el.textContent || '').trim();
+        if (text) { title = text; break; }
+      }
 
+      // Thumbnail: prefer the actual img src, fall back to CDN
       const thumbEl = container.querySelector('ytd-thumbnail img, #thumbnail img, yt-image img');
       if (thumbEl && thumbEl.src && !thumbEl.src.startsWith('data:')) {
         thumbnail = thumbEl.src;
       }
     }
 
+    // Fallback 1: aria-label on the thumbnail <a> (YouTube sets this reliably)
     if (!title) {
-      title = link.getAttribute('aria-label') || link.getAttribute('title') || '';
+      const thumbLink = container
+        ? container.querySelector('a#thumbnail, ytd-thumbnail a')
+        : null;
+      title = (thumbLink || link).getAttribute('aria-label') || '';
+    }
+
+    // Fallback 2: title/aria-label on the clicked link itself
+    if (!title) {
+      title = link.getAttribute('title') || link.getAttribute('aria-label') || '';
     }
 
     return { videoId, title, thumbnail, url: href };
