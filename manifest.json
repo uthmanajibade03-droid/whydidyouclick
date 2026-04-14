@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Why Did You Click?",
+  "version": "1.0.0",
+  "description": "Save reasons why you clicked YouTube videos — by title, thumbnail, or both.",
+  "permissions": ["storage"],
+  "content_scripts": [
+    {
+      "matches": ["*://www.youtube.com/*", "*://m.youtube.com/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Why Did You Click?"
+  }
+}
