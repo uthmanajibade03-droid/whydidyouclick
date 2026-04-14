@@ -3,7 +3,13 @@
   "name": "Why Did You Click?",
   "version": "1.0.0",
   "description": "Save reasons why you clicked YouTube videos — by title, thumbnail, or both.",
-  "permissions": ["storage"],
+  "permissions": ["storage", "sidePanel"],
+  "side_panel": {
+    "default_path": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "matches": ["*://www.youtube.com/*", "*://m.youtube.com/*"],
@@ -13,7 +19,6 @@
     }
   ],
   "action": {
-    "default_popup": "popup.html",
-    "default_title": "Why Did You Click?"
+    "default_title": "Open Inspiration Board"
   }
 }
