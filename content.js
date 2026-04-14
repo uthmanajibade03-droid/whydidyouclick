@@ -153,11 +153,11 @@
 
       saveBtn.addEventListener('click', () => doSave(false));
       overlay.querySelector('.wdyc-btn-skip').addEventListener('click', () => doSave(true));
-      overlay.querySelector('.wdyc-close').addEventListener('click', () => close({ save: false, watch: true }));
-      overlay.addEventListener('click', (e) => { if (e.target === overlay) close({ save: false, watch: true }); });
+      overlay.querySelector('.wdyc-close').addEventListener('click', () => close({ save: false, watch: false }));
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) close({ save: false, watch: false }); });
 
       overlay.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') close({ save: false, watch: true });
+        if (e.key === 'Escape') close({ save: false, watch: false });
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && selectedType) doSave(false);
         // Keyboard shortcut: T = title, H = thumbnail, B = both
         if (!e.target.matches('textarea')) {
