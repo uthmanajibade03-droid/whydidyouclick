@@ -43,14 +43,25 @@ function pickTrack(tracks) {
   );
 }
 
+// Parses YouTube json3 caption events into clean plain text.
+// Strips <c> word-timing tags and "Kind: captions / Language:" metadata lines.
+function parseTranscriptEvents(events) {
+  return (events || [])
+    .flatMap(e => (e.segs || []).map(s =>
+      (s.utf8 || '').replace(/<[^>]*>/g, '').replace(/\n/g, ' ')
+    ))
+    .filter(s => s && !s.startsWith('Kind:') && !s.startsWith('Language:'))
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim() || null;
+}
+
 async function trackToText(track) {
   if (!track?.baseUrl) return null;
   const res = await fetch(track.baseUrl + '&fmt=json3');
   if (!res.ok) return null;
   const json = await res.json();
-  return (json.events || [])
-    .flatMap(e => (e.segs || []).map(s => s.utf8 || ''))
-    .join(' ').replace(/\s+/g, ' ').trim() || null;
+  return parseTranscriptEvents(json.events);
 }
 
 // Strategy 1 — InnerTube API (fast, structured, same API yt-dlp uses)

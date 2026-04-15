@@ -778,3 +778,70 @@ body {
   color: #dc2626;
   padding: 4px 0;
 }
+
+/* ── Intent collection form (shown before AI call) ───────────────────────── */
+
+.lab-intent-form {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.lab-intent-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #5b21b6;
+}
+
+.lab-intent-sub {
+  font-size: 11px;
+  color: #7c3aed;
+  opacity: 0.8;
+  margin-top: -3px;
+}
+
+.lab-intent-input {
+  font-family: inherit;
+  font-size: 12px;
+  color: #0f0f0f;
+  background: #fff;
+  border: 1.5px solid #c4b5fd;
+  border-radius: 8px;
+  padding: 8px 10px;
+  resize: vertical;
+  line-height: 1.5;
+  outline: none;
+  transition: border-color 0.12s;
+}
+.lab-intent-input:focus { border-color: #7c3aed; }
+
+.lab-intent-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.lab-intent-submit {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  background: #7c3aed;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.lab-intent-submit:hover { background: #6d28d9; }
+
+.lab-intent-cancel {
+  font-family: inherit;
+  font-size: 11px;
+  color: #888;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+.lab-intent-cancel:hover { color: #333; }

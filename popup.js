@@ -225,12 +225,47 @@ function renderLab(labEntries, transcripts, query) {
 
 // ─── AI actions ───────────────────────────────────────────────────────────────
 
+// Shows an inline form asking what the user is repurposing the video for.
+// Resolves with the intent string (may be empty) or null if cancelled.
+function collectIntent(outEl, action) {
+  return new Promise(resolve => {
+    const actionLabel = action === 'analyse' ? 'Analyse' : 'Rewrite';
+    outEl.style.display = 'block';
+    outEl.innerHTML = `
+      <div class="lab-intent-form">
+        <p class="lab-intent-label">What are you repurposing this for?</p>
+        <p class="lab-intent-sub">Tell the AI your goal — same format, different angle, short-form, etc.</p>
+        <textarea class="lab-intent-input" rows="3"
+          placeholder="e.g. A YouTube Short targeting beginners who want to learn AI without coding…"></textarea>
+        <div class="lab-intent-actions">
+          <button class="lab-intent-submit">${actionLabel} →</button>
+          <button class="lab-intent-cancel">Cancel</button>
+        </div>
+      </div>
+    `;
+    const input  = outEl.querySelector('.lab-intent-input');
+    const submit = outEl.querySelector('.lab-intent-submit');
+    const cancel = outEl.querySelector('.lab-intent-cancel');
+    input.focus();
+    const done = (val) => { submit.removeEventListener('click', onSubmit); cancel.removeEventListener('click', onCancel); resolve(val); };
+    const onSubmit = () => done(input.value.trim());
+    const onCancel = () => { outEl.style.display = 'none'; done(null); };
+    submit.addEventListener('click', onSubmit);
+    cancel.addEventListener('click', onCancel);
+    input.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) onSubmit(); });
+  });
+}
+
 async function handleAiAction(action, entry, btn) {
   const outEl = document.getElementById(`ai-out-${entry.id}`);
   if (!outEl) return;
 
   const tr = transcriptCache[entry.videoId];
   const transcript = tr?.text || '';
+
+  // Collect repurposing intent before calling the API
+  const intent = await collectIntent(outEl, action);
+  if (intent === null) return; // user cancelled
 
   let messages;
   if (action === 'analyse') {
@@ -241,8 +276,9 @@ async function handleAiAction(action, entry, btn) {
 Title: ${entry.title || 'Unknown'}
 Views: ${entry.views || '?'} | Likes: ${entry.likes || '?'} | Channel: ${entry.channelName || '?'} | Duration: ${entry.duration || '?'}
 ${transcript ? `\nTranscript (excerpt):\n${transcript.slice(0, 3000)}` : '(No transcript available)'}
+${intent ? `\nRepurposing goal: ${intent}` : ''}
 
-Be concise and actionable.`,
+Tailor your analysis to help achieve the stated goal. Be concise and actionable.`,
     }];
   } else {
     if (!transcript) {
@@ -253,11 +289,12 @@ Be concise and actionable.`,
     messages = [{
       role: 'user',
       content: `Rewrite this YouTube video transcript as a clean recording script I can use to create my own video on this topic. Keep the key ideas but use fresh language and clear structure.
+${intent ? `\nI'm creating: ${intent}` : ''}
 
 Original transcript:
 ${transcript.slice(0, 4000)}
 
-Format with clearly labelled sections (Intro, Main Points, CTA, etc.). Write in first person, conversational tone.`,
+Format with clearly labelled sections (Intro, Main Points, CTA, etc.). Write in first person, conversational tone. Adapt the depth, tone, and format to suit the stated goal.`,
     }];
   }
 
@@ -269,7 +306,7 @@ Format with clearly labelled sections (Intro, Main Points, CTA, etc.). Write in 
   outEl.innerHTML = '<div class="lab-ai-loading"><span class="lab-ai-spinner"></span> Thinking…</div>';
 
   const result = await new Promise(resolve =>
-    chrome.runtime.sendMessage({ action: 'CLAUDE_API', payload: { messages, maxTokens: 1024 } }, resolve)
+    chrome.runtime.sendMessage({ action: 'CLAUDE_API', payload: { messages, maxTokens: 1500 } }, resolve)
   );
 
   btn.disabled = false;

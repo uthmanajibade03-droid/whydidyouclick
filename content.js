@@ -187,6 +187,19 @@
 
   // ─── Direct transcript fetch (runs in YouTube page context — has user cookies) ─
 
+  // Parses YouTube json3 caption events into clean plain text.
+  // Strips <c> word-timing tags and "Kind: captions / Language:" metadata lines.
+  function parseTranscriptEvents(events) {
+    return (events || [])
+      .flatMap(e => (e.segs || []).map(s =>
+        (s.utf8 || '').replace(/<[^>]*>/g, '').replace(/\n/g, ' ')
+      ))
+      .filter(s => s && !s.startsWith('Kind:') && !s.startsWith('Language:'))
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim() || null;
+  }
+
   async function fetchTranscriptFromPage(videoId) {
     // Strategy 1: ytInitialPlayerResponse caption URL — instant on watch pages
     try {
@@ -199,9 +212,7 @@
           const res = await fetch(track.baseUrl + '&fmt=json3');
           if (res.ok) {
             const json = await res.json();
-            const text = (json.events || [])
-              .flatMap(e => (e.segs || []).map(s => s.utf8 || ''))
-              .join(' ').replace(/\s+/g, ' ').trim();
+            const text = parseTranscriptEvents(json.events);
             if (text) return text;
           }
         }
@@ -231,9 +242,7 @@
             const capRes = await fetch(track.baseUrl + '&fmt=json3');
             if (capRes.ok) {
               const json = await capRes.json();
-              const text = (json.events || [])
-                .flatMap(e => (e.segs || []).map(s => s.utf8 || ''))
-                .join(' ').replace(/\s+/g, ' ').trim();
+              const text = parseTranscriptEvents(json.events);
               if (text) return text;
             }
           }
