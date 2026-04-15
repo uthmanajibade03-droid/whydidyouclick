@@ -17,47 +17,60 @@
   function escapeHtml(str) {
     if (!str) return '';
     return str
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
+
+  function cleanText(t) {
+    return (t || '').replace(/\s+/g, ' ').trim();
+  }
+
+  // ─── Video info (title + thumbnail) ──────────────────────────────────────
+
+  const CONTAINER_SEL = [
+    'ytd-rich-grid-media',           // home page inner media (closer to content)
+    'ytd-video-renderer',
+    'ytd-rich-item-renderer',
+    'ytd-compact-video-renderer',    // watch page sidebar
+    'ytd-grid-video-renderer',
+    'ytd-reel-item-renderer',
+    'ytd-playlist-panel-video-renderer',
+    'ytd-movie-renderer',
+    'ytd-radio-renderer',
+  ].join(', ');
 
   function getVideoInfo(link) {
     const href = link.href;
     const videoId = extractVideoId(href);
     if (!videoId) return null;
 
-    const container = link.closest([
-      'ytd-video-renderer',
-      'ytd-rich-item-renderer',
-      'ytd-compact-video-renderer',
-      'ytd-grid-video-renderer',
-      'ytd-reel-item-renderer',
-      'ytd-playlist-panel-video-renderer',
-      'ytd-movie-renderer',
-      'ytd-radio-renderer',
-      'ytd-channel-video-player-renderer',
-    ].join(', '));
-
+    const container = link.closest(CONTAINER_SEL);
     let title = '';
     let thumbnail = `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
 
     if (container) {
-      // Priority 1: aria-label / title attributes on anchor elements — set by
-      // YouTube reliably even when yt-formatted-string hasn't rendered text yet
+      // ── A: attributes on known anchor elements ──────────────────────────
       for (const sel of ['a#video-title-link', 'a#video-title', 'a#thumbnail', 'ytd-thumbnail a']) {
         const el = container.querySelector(sel);
-        const t = el && (el.getAttribute('aria-label') || el.getAttribute('title') || '').trim();
+        const t = cleanText(el && (el.getAttribute('aria-label') || el.getAttribute('title')));
         if (t) { title = t; break; }
       }
 
-      // Priority 2: text content of title elements (fallback)
+      // ── B: innerText on title/heading elements (pierces open shadow DOM) ─
       if (!title) {
-        for (const sel of ['h3 #video-title', '#video-title', 'h3', 'h4']) {
+        for (const sel of ['h3 #video-title', 'h4 #video-title', '#video-title', 'h3', 'h4']) {
           const el = container.querySelector(sel);
-          const t = el && (el.innerText || el.textContent || '').trim();
+          if (!el) continue;
+          const t = cleanText(el.innerText || el.textContent);
           if (t) { title = t; break; }
+        }
+      }
+
+      // ── C: open shadow root text on #video-title ─────────────────────────
+      if (!title) {
+        const el = container.querySelector('#video-title');
+        if (el && el.shadowRoot) {
+          title = cleanText(el.shadowRoot.textContent);
         }
       }
 
@@ -68,9 +81,27 @@
       }
     }
 
-    // Last resort: attributes on the clicked link itself
+    // ── D: walk up from the clicked link checking aria-label at each level ─
     if (!title) {
-      title = link.getAttribute('aria-label') || link.getAttribute('title') || '';
+      let el = link;
+      for (let i = 0; i < 12 && el && el !== document.body; i++, el = el.parentElement) {
+        const t = cleanText(
+          el.getAttribute && (el.getAttribute('aria-label') || el.getAttribute('title'))
+        );
+        if (t && t.length > 3) { title = t; break; }
+      }
+    }
+
+    // ── E: scan every link on the page that points to this video ─────────
+    if (!title) {
+      const candidates = document.querySelectorAll(
+        `a[href*="v=${videoId}"][aria-label], a[href*="v=${videoId}"][title],` +
+        `a[href*="/shorts/${videoId}"][aria-label], a[href*="/shorts/${videoId}"][title]`
+      );
+      for (const a of candidates) {
+        const t = cleanText(a.getAttribute('aria-label') || a.getAttribute('title'));
+        if (t && t.length > 3) { title = t; break; }
+      }
     }
 
     return { videoId, title, thumbnail, url: href };
@@ -87,10 +118,9 @@
         type,
         note,
         date: new Date().toISOString(),
-        title: (type === 'title' || type === 'both') ? videoInfo.title : null,
+        title:     (type === 'title'     || type === 'both') ? videoInfo.title     : null,
         thumbnail: (type === 'thumbnail' || type === 'both') ? videoInfo.thumbnail : null,
       };
-
       chrome.storage.local.get(['entries'], (result) => {
         const entries = result.entries || [];
         entries.unshift(entry);
@@ -100,7 +130,7 @@
     });
   }
 
-  // ─── Drop zone ───────────────────────────────────────────────────────────
+  // ─── Drop zone ────────────────────────────────────────────────────────────
 
   let dropZoneEl = null;
   let draggedInfo = null;
@@ -127,53 +157,63 @@
       e.dataTransfer.dropEffect = 'copy';
       dropZoneEl.classList.add('wdyc-dz-over');
     });
-
     dropZoneEl.addEventListener('dragleave', (e) => {
       if (!dropZoneEl.contains(e.relatedTarget)) {
         dropZoneEl.classList.remove('wdyc-dz-over');
       }
     });
-
     dropZoneEl.addEventListener('drop', async (e) => {
       e.preventDefault();
       dropZoneEl.classList.remove('wdyc-dz-over');
       if (!draggedInfo) return;
-
       await saveEntry(draggedInfo, 'both', '');
       draggedInfo = null;
-
       dropZoneEl.classList.add('wdyc-dz-success');
-      setTimeout(() => {
-        dropZoneEl.classList.remove('wdyc-dz-success', 'wdyc-dz-visible');
-      }, 1200);
+      setTimeout(() => dropZoneEl.classList.remove('wdyc-dz-success', 'wdyc-dz-visible'), 1200);
     });
 
     document.body.appendChild(dropZoneEl);
     return dropZoneEl;
   }
 
-  // ─── Make cards draggable ────────────────────────────────────────────────
+  // ─── Drag — card selector ─────────────────────────────────────────────────
 
-  const CARD_SELECTOR = [
-    'ytd-video-renderer',
+  const CARD_SEL = [
+    'ytd-rich-grid-media',
     'ytd-rich-item-renderer',
+    'ytd-video-renderer',
     'ytd-compact-video-renderer',
     'ytd-grid-video-renderer',
     'ytd-reel-item-renderer',
+    'ytd-playlist-panel-video-renderer',
   ].join(', ');
 
-  // Stamp draggable=true on cards so the browser allows dragstart to fire
+  // Stamp draggable=true on every video card (and its thumbnail link)
   function makeDraggable() {
-    document.querySelectorAll(CARD_SELECTOR + ':not([data-wdyc-drag])').forEach(card => {
+    document.querySelectorAll(CARD_SEL + ':not([data-wdyc-drag])').forEach(card => {
       card.dataset.wdycDrag = '1';
       card.setAttribute('draggable', 'true');
+      // Also stamp the thumbnail <a> so dragging the image works reliably
+      const thumbA = card.querySelector('a#thumbnail, ytd-thumbnail a');
+      if (thumbA) thumbA.setAttribute('draggable', 'true');
     });
   }
 
-  // Handle drag at document level (capture phase) so we run before
-  // YouTube's own handlers that would otherwise cancel the drag
+  // ─── Drag events — document capture phase ────────────────────────────────
+  // composedPath() pierces shadow DOM so we find the card even when the drag
+  // starts from inside a yt-image or yt-formatted-string shadow root.
+
+  function cardFromEvent(e) {
+    // composedPath is the full path including shadow-DOM internals
+    for (const el of (e.composedPath ? e.composedPath() : [])) {
+      if (el.matches && el.matches(CARD_SEL)) return el;
+    }
+    // Fallback for browsers where composedPath isn't available
+    return e.target.closest && e.target.closest(CARD_SEL);
+  }
+
   document.addEventListener('dragstart', (e) => {
-    const card = e.target.closest(CARD_SELECTOR);
+    const card = cardFromEvent(e);
     if (!card) return;
 
     const link = card.querySelector('a[href*="/watch?v="], a[href*="/shorts/"]');
@@ -186,18 +226,18 @@
     e.dataTransfer.effectAllowed = 'copy';
     e.dataTransfer.setData('text/plain', info.videoId);
 
-    // Use the thumbnail as the drag image so the whole card feels dragged
+    // Show the thumbnail as the drag ghost
     const thumb = card.querySelector('ytd-thumbnail img, #thumbnail img, yt-image img');
     if (thumb && thumb.naturalWidth) {
-      e.dataTransfer.setDragImage(thumb, thumb.offsetWidth / 2, thumb.offsetHeight / 2);
+      try { e.dataTransfer.setDragImage(thumb, thumb.offsetWidth / 2, thumb.offsetHeight / 2); }
+      catch (_) {}
     }
 
-    const dz = getDropZone();
-    requestAnimationFrame(() => dz.classList.add('wdyc-dz-visible'));
+    requestAnimationFrame(() => getDropZone().classList.add('wdyc-dz-visible'));
   }, true);
 
   document.addEventListener('dragend', (e) => {
-    if (!e.target.closest(CARD_SELECTOR)) return;
+    if (!cardFromEvent(e)) return;
     const dz = getDropZone();
     setTimeout(() => {
       if (!dz.classList.contains('wdyc-dz-success')) {
@@ -207,16 +247,16 @@
     }, 80);
   }, true);
 
-  // Re-stamp on SPA navigation / infinite scroll
-  let debounceTimer = null;
+  // Re-stamp on SPA navigation + infinite scroll (shorter debounce = faster)
+  let debounce = null;
   new MutationObserver(() => {
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(makeDraggable, 400);
+    clearTimeout(debounce);
+    debounce = setTimeout(makeDraggable, 200);
   }).observe(document.body, { childList: true, subtree: true });
 
   makeDraggable();
 
-  // ─── Modal ───────────────────────────────────────────────────────────────
+  // ─── Modal ────────────────────────────────────────────────────────────────
 
   function showModal(videoInfo) {
     return new Promise((resolve) => {
@@ -230,19 +270,13 @@
             <h2>Save to Inspiration Board</h2>
             <button class="wdyc-close" title="Close (Esc)">✕</button>
           </div>
-
           <div class="wdyc-preview">
-            <img
-              class="wdyc-thumb"
-              src="${escapeHtml(videoInfo.thumbnail)}"
-              alt="Thumbnail"
-              onerror="this.style.display='none'"
-            />
+            <img class="wdyc-thumb" src="${escapeHtml(videoInfo.thumbnail)}"
+              alt="Thumbnail" onerror="this.style.display='none'"/>
             <span class="wdyc-video-title">
               ${escapeHtml(videoInfo.title) || '<em style="color:#999">Unknown title</em>'}
             </span>
           </div>
-
           <div class="wdyc-body">
             <p class="wdyc-section-label">What's inspiring you?</p>
             <div class="wdyc-type-picker">
@@ -262,18 +296,13 @@
                 <span class="wdyc-type-desc">The full package works</span>
               </button>
             </div>
-
             <label class="wdyc-section-label" for="wdyc-note">
               Note <span class="wdyc-optional">(optional)</span>
             </label>
-            <textarea
-              id="wdyc-note"
-              class="wdyc-note"
-              placeholder="What specifically inspires you? e.g. "Love the color contrast" or "Bold curiosity gap""
-              rows="2"
-            ></textarea>
+            <textarea id="wdyc-note" class="wdyc-note"
+              placeholder='What specifically inspires you? e.g. "Love the color contrast"'
+              rows="2"></textarea>
           </div>
-
           <div class="wdyc-footer">
             <button class="wdyc-btn-just-watch">Just Watch</button>
             <div class="wdyc-footer-main">
@@ -296,16 +325,11 @@
         });
       });
 
-      const close = (result) => {
-        overlay.remove();
-        modalOpen = false;
-        resolve(result);
-      };
-
-      const doSave = (andWatch) => {
+      const close = (r) => { overlay.remove(); modalOpen = false; resolve(r); };
+      const doSave = (watch) => {
         if (!selectedType) return;
         const note = overlay.querySelector('.wdyc-note').value.trim();
-        close({ save: true, watch: !!andWatch, type: selectedType, note });
+        close({ save: true, watch: !!watch, type: selectedType, note });
       };
 
       saveBtn.addEventListener('click', () => doSave(false));
@@ -313,7 +337,6 @@
       overlay.querySelector('.wdyc-btn-just-watch').addEventListener('click', () => close({ save: false, watch: true }));
       overlay.querySelector('.wdyc-close').addEventListener('click', () => close({ save: false, watch: false }));
       overlay.addEventListener('click', (e) => { if (e.target === overlay) close({ save: false, watch: false }); });
-
       overlay.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') close({ save: false, watch: false });
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && selectedType) doSave(false);
@@ -328,34 +351,25 @@
     });
   }
 
-  // ─── Intercept clicks ─────────────────────────────────────────────────────
+  // ─── Click intercept ──────────────────────────────────────────────────────
 
-  document.addEventListener(
-    'click',
-    async function (e) {
-      if (modalOpen) return;
-      if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+  document.addEventListener('click', async function (e) {
+    if (modalOpen) return;
+    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
 
-      const link = e.target.closest('a[href*="/watch?v="], a[href*="/shorts/"]');
-      if (!link) return;
+    const link = e.target.closest('a[href*="/watch?v="], a[href*="/shorts/"]');
+    if (!link) return;
 
-      const videoInfo = getVideoInfo(link);
-      if (!videoInfo) return;
+    const videoInfo = getVideoInfo(link);
+    if (!videoInfo) return;
 
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      modalOpen = true;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    modalOpen = true;
 
-      const result = await showModal(videoInfo);
+    const result = await showModal(videoInfo);
+    if (result.save) await saveEntry(videoInfo, result.type, result.note);
+    if (result.watch) window.location.href = videoInfo.url;
+  }, true);
 
-      if (result.save) {
-        await saveEntry(videoInfo, result.type, result.note);
-      }
-
-      if (result.watch) {
-        window.location.href = videoInfo.url;
-      }
-    },
-    true
-  );
 })();
