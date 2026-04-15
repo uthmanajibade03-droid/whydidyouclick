@@ -145,6 +145,18 @@ function renderInspiration(entries, filter, query) {
 
 // ─── Content Lab — card builder ───────────────────────────────────────────────
 
+// Cleans raw transcript text for display — strips <c> word-timing tags and
+// metadata lines that may be present in transcripts saved before the fetch fix.
+function cleanTranscript(raw) {
+  return (raw || '')
+    .replace(/<[^>]*>/g, '')
+    .replace(/\n/g, ' ')
+    .replace(/Kind:\s*captions\s*/gi, '')
+    .replace(/Language:\s*[a-z-]+\s*/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function buildLabCard(entry, transcripts) {
   const tr = transcripts[entry.videoId];
   const status = tr
@@ -154,9 +166,7 @@ function buildLabCard(entry, transcripts) {
   const statusLabel = { pending: '⏳ Fetching…', fetched: '✅ Transcript ready', unavailable: '⚠️ No transcript' };
   const statusClass = { pending: 'ts-pending', fetched: 'ts-fetched', unavailable: 'ts-unavailable' };
 
-  const transcriptPreview = tr && tr.text
-    ? tr.text.slice(0, 500) + (tr.text.length > 500 ? '…' : '')
-    : '';
+  const transcriptText = tr && tr.text ? cleanTranscript(tr.text) : '';
 
   const statsHtml = [
     entry.views        && `<span class="lab-stat">👁 ${escapeHtml(entry.views)}</span>`,
@@ -183,10 +193,10 @@ function buildLabCard(entry, transcripts) {
         </div>
       </div>
     </div>
-    ${transcriptPreview ? `
+    ${transcriptText ? `
       <details class="lab-transcript">
-        <summary>Transcript preview</summary>
-        <p class="lab-transcript-text">${escapeHtml(transcriptPreview)}</p>
+        <summary>Transcript</summary>
+        <p class="lab-transcript-text">${escapeHtml(transcriptText)}</p>
       </details>
     ` : ''}
     <div class="lab-actions">
@@ -264,7 +274,7 @@ async function handleAiAction(action, entry, btn) {
   if (!outEl) return;
 
   const tr = transcriptCache[entry.videoId];
-  const transcript = tr?.text || '';
+  const transcript = cleanTranscript(tr?.text);
 
   // Collect repurposing intent before calling the API
   const intent = await collectIntent(outEl, action);

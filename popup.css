@@ -548,11 +548,12 @@ body {
 .lab-transcript-text {
   font-size: 11px;
   color: #444;
-  line-height: 1.6;
+  line-height: 1.7;
   margin-top: 8px;
   white-space: pre-wrap;
-  max-height: 180px;
+  max-height: 320px;
   overflow-y: auto;
+  word-break: break-word;
 }
 
 /* Lab action row */
