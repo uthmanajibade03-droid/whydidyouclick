@@ -55,6 +55,12 @@
 .wdyc-dz-label { font-size: 13px; font-weight: 700; color: #0f0f0f; margin: 0; }
 .wdyc-dz-sub   { font-size: 11px; color: #999; margin: 0; line-height: 1.4; }
 
+/* Prevent text from being selected/dragged instead of the whole card */
+[data-wdyc-drag] {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+
 .wdyc-overlay {
   position: fixed !important;
   inset: 0 !important;

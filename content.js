@@ -44,28 +44,33 @@
     let thumbnail = `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
 
     if (container) {
-      const titleSelectors = [
-        'h3 #video-title', 'h4 #video-title', '#video-title',
-        'yt-formatted-string#video-title', 'span#video-title', 'h3', 'h4',
-      ];
-      for (const sel of titleSelectors) {
+      // Priority 1: aria-label / title attributes on anchor elements — set by
+      // YouTube reliably even when yt-formatted-string hasn't rendered text yet
+      for (const sel of ['a#video-title-link', 'a#video-title', 'a#thumbnail', 'ytd-thumbnail a']) {
         const el = container.querySelector(sel);
-        const text = el && (el.innerText || el.textContent || '').trim();
-        if (text) { title = text; break; }
+        const t = el && (el.getAttribute('aria-label') || el.getAttribute('title') || '').trim();
+        if (t) { title = t; break; }
       }
 
+      // Priority 2: text content of title elements (fallback)
+      if (!title) {
+        for (const sel of ['h3 #video-title', '#video-title', 'h3', 'h4']) {
+          const el = container.querySelector(sel);
+          const t = el && (el.innerText || el.textContent || '').trim();
+          if (t) { title = t; break; }
+        }
+      }
+
+      // Thumbnail
       const thumbEl = container.querySelector('ytd-thumbnail img, #thumbnail img, yt-image img');
       if (thumbEl && thumbEl.src && !thumbEl.src.startsWith('data:')) {
         thumbnail = thumbEl.src;
       }
     }
 
+    // Last resort: attributes on the clicked link itself
     if (!title) {
-      const thumbLink = container ? container.querySelector('a#thumbnail, ytd-thumbnail a') : null;
-      title = (thumbLink || link).getAttribute('aria-label') || '';
-    }
-    if (!title) {
-      title = link.getAttribute('title') || link.getAttribute('aria-label') || '';
+      title = link.getAttribute('aria-label') || link.getAttribute('title') || '';
     }
 
     return { videoId, title, thumbnail, url: href };
@@ -157,40 +162,52 @@
     'ytd-reel-item-renderer',
   ].join(', ');
 
+  // Stamp draggable=true on cards so the browser allows dragstart to fire
   function makeDraggable() {
     document.querySelectorAll(CARD_SELECTOR + ':not([data-wdyc-drag])').forEach(card => {
       card.dataset.wdycDrag = '1';
       card.setAttribute('draggable', 'true');
-
-      card.addEventListener('dragstart', (e) => {
-        const link = card.querySelector('a[href*="/watch?v="], a[href*="/shorts/"]');
-        if (!link) { e.preventDefault(); return; }
-
-        const info = getVideoInfo(link);
-        if (!info) { e.preventDefault(); return; }
-
-        draggedInfo = info;
-        e.dataTransfer.effectAllowed = 'copy';
-        e.dataTransfer.setData('text/plain', info.videoId);
-
-        const dz = getDropZone();
-        requestAnimationFrame(() => dz.classList.add('wdyc-dz-visible'));
-      });
-
-      card.addEventListener('dragend', () => {
-        const dz = getDropZone();
-        // Give the drop handler time to fire first
-        setTimeout(() => {
-          if (!dz.classList.contains('wdyc-dz-success')) {
-            dz.classList.remove('wdyc-dz-visible', 'wdyc-dz-over');
-          }
-          draggedInfo = null;
-        }, 80);
-      });
     });
   }
 
-  // Re-run whenever YouTube adds new video cards (SPA navigation / infinite scroll)
+  // Handle drag at document level (capture phase) so we run before
+  // YouTube's own handlers that would otherwise cancel the drag
+  document.addEventListener('dragstart', (e) => {
+    const card = e.target.closest(CARD_SELECTOR);
+    if (!card) return;
+
+    const link = card.querySelector('a[href*="/watch?v="], a[href*="/shorts/"]');
+    if (!link) return;
+
+    const info = getVideoInfo(link);
+    if (!info) return;
+
+    draggedInfo = info;
+    e.dataTransfer.effectAllowed = 'copy';
+    e.dataTransfer.setData('text/plain', info.videoId);
+
+    // Use the thumbnail as the drag image so the whole card feels dragged
+    const thumb = card.querySelector('ytd-thumbnail img, #thumbnail img, yt-image img');
+    if (thumb && thumb.naturalWidth) {
+      e.dataTransfer.setDragImage(thumb, thumb.offsetWidth / 2, thumb.offsetHeight / 2);
+    }
+
+    const dz = getDropZone();
+    requestAnimationFrame(() => dz.classList.add('wdyc-dz-visible'));
+  }, true);
+
+  document.addEventListener('dragend', (e) => {
+    if (!e.target.closest(CARD_SELECTOR)) return;
+    const dz = getDropZone();
+    setTimeout(() => {
+      if (!dz.classList.contains('wdyc-dz-success')) {
+        dz.classList.remove('wdyc-dz-visible', 'wdyc-dz-over');
+      }
+      draggedInfo = null;
+    }, 80);
+  }, true);
+
+  // Re-stamp on SPA navigation / infinite scroll
   let debounceTimer = null;
   new MutationObserver(() => {
     clearTimeout(debounceTimer);
