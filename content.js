@@ -185,15 +185,16 @@
     });
   }
 
-  // ─── Direct transcript fetch (faster — runs in YouTube page context) ──────
+  // ─── Direct transcript fetch (runs in YouTube page context — has user cookies) ─
 
   async function fetchTranscriptFromPage(videoId) {
-    // Strategy 1: ytInitialPlayerResponse caption track URL (watch page only)
+    // Strategy 1: ytInitialPlayerResponse caption URL — instant on watch pages
     try {
       const tracks = window.ytInitialPlayerResponse
         ?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
       if (tracks?.length) {
-        const track = tracks.find(t => t.languageCode === 'en') || tracks[0];
+        const track = tracks.find(t => t.languageCode === 'en' && t.kind !== 'asr')
+          || tracks.find(t => t.languageCode === 'en') || tracks[0];
         if (track?.baseUrl) {
           const res = await fetch(track.baseUrl + '&fmt=json3');
           if (res.ok) {
@@ -207,23 +208,54 @@
       }
     } catch (_) {}
 
-    // Strategy 2: timedtext API with YouTube cookies (same-origin)
-    for (const suffix of ['&lang=en', '&tlang=en']) {
-      try {
-        const res = await fetch(
-          `https://www.youtube.com/api/timedtext?v=${videoId}&fmt=json3${suffix}`
-        );
-        if (res.ok) {
-          const json = await res.json();
-          const text = (json.events || [])
-            .flatMap(e => (e.segs || []).map(s => s.utf8 || ''))
-            .join(' ').replace(/\s+/g, ' ').trim();
-          if (text) return text;
+    // Strategy 2: InnerTube API — called FROM the YT page so user cookies travel
+    // with the request; background.js can't do this (different cookie context).
+    try {
+      const res = await fetch('https://www.youtube.com/youtubei/v1/player', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoId,
+          context: {
+            client: { clientName: 'WEB', clientVersion: '2.20231121.01.00', hl: 'en', gl: 'US' },
+          },
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const tracks = data.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+        if (tracks?.length) {
+          const track = tracks.find(t => t.languageCode === 'en' && t.kind !== 'asr')
+            || tracks.find(t => t.languageCode === 'en') || tracks[0];
+          if (track?.baseUrl) {
+            const capRes = await fetch(track.baseUrl + '&fmt=json3');
+            if (capRes.ok) {
+              const json = await capRes.json();
+              const text = (json.events || [])
+                .flatMap(e => (e.segs || []).map(s => s.utf8 || ''))
+                .join(' ').replace(/\s+/g, ' ').trim();
+              if (text) return text;
+            }
+          }
         }
-      } catch (_) {}
-    }
-    return null; // null = could not fetch (background will retry)
+      }
+    } catch (_) {}
+
+    return null;
   }
+
+  // ─── Message handler — background can ask us to fetch on its behalf ────────
+  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg.action === 'FETCH_TRANSCRIPT_IN_PAGE') {
+      fetchTranscriptFromPage(msg.videoId).then(text => {
+        if (text) {
+          chrome.runtime.sendMessage({ action: 'STORE_TRANSCRIPT', videoId: msg.videoId, text });
+        }
+        sendResponse({ ok: true, found: !!text });
+      });
+      return true;
+    }
+  });
 
   async function saveLabEntry(videoInfo) {
     const stats = extractWatchPageStats(videoInfo.videoId);

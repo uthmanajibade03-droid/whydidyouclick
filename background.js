@@ -145,6 +145,21 @@ async function fetchTranscript(videoId) {
 }
 
 async function handleFetchTranscript(videoId, sendResponse) {
+  // Prefer delegating to an open YouTube tab — content scripts have the user's
+  // cookies and can call the InnerTube API successfully where background can't.
+  try {
+    const tabs = await chrome.tabs.query({ url: '*://www.youtube.com/*' });
+    for (const tab of tabs) {
+      try {
+        const result = await chrome.tabs.sendMessage(tab.id, {
+          action: 'FETCH_TRANSCRIPT_IN_PAGE', videoId,
+        });
+        if (result?.found) { sendResponse({ ok: true }); return; }
+      } catch (_) {}
+    }
+  } catch (_) {}
+
+  // No YouTube tab available — try from background (cookies may be absent)
   try {
     const text = await fetchTranscript(videoId);
     await writeTranscript(videoId, text);

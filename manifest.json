@@ -3,7 +3,7 @@
   "name": "Why Did You Click?",
   "version": "1.1.0",
   "description": "Inspiration Board + Content Lab for YouTube creators.",
-  "permissions": ["storage", "sidePanel"],
+  "permissions": ["storage", "sidePanel", "tabs"],
   "host_permissions": ["https://www.youtube.com/*", "https://api.anthropic.com/*", "http://localhost:3000/*"],
   "side_panel": {
     "default_path": "popup.html"
