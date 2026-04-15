@@ -75,6 +75,19 @@
 
     <div class="settings-body">
       <div class="settings-section">
+        <h3 class="settings-heading">Transcript Server</h3>
+        <p class="settings-desc">
+          Run <code>launch.command</code> from your <strong>transcript-getter</strong> folder
+          to start the local server. Transcripts fetch in ~2 s when it's running.
+        </p>
+        <div id="server-status" class="server-status">
+          <span id="server-dot" class="server-dot"></span>
+          <span id="server-label">Checking…</span>
+        </div>
+        <button id="btn-check-server" class="settings-save-btn" style="margin-top:4px">Re-check</button>
+      </div>
+
+      <div class="settings-section" style="margin-top:20px">
         <h3 class="settings-heading">AI Integration</h3>
         <p class="settings-desc">
           Claude AI can analyse why videos perform well and rewrite transcripts into
@@ -90,6 +103,7 @@
         </select>
         <button id="btn-save-settings" class="settings-save-btn">Save Settings</button>
         <p id="settings-status" class="settings-status"></p>
+      </div>
       </div>
     </div>
   </div>

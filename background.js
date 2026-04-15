@@ -110,11 +110,34 @@ async function fetchViaPageParse(videoId) {
   return trackToText(pickTrack(tracks));
 }
 
+// Strategy 0 — local transcript-getter server (yt_dlp, most reliable)
+// User runs launch.command from the transcript-getter folder first.
+// Falls back silently if server isn't running.
+async function fetchViaLocalServer(videoId) {
+  const res = await fetch('http://localhost:3000/get-transcript', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url: `https://www.youtube.com/watch?v=${videoId}` }),
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  if (data.error || !data.transcript?.length) return null;
+  // data.transcript is [{timestamp, end_time, text}, ...]  — join paragraphs
+  return data.transcript.map(t => t.text).join(' ').replace(/\s+/g, ' ').trim() || null;
+}
+
 async function fetchTranscript(videoId) {
+  // 1. Local yt_dlp server (best — if running)
+  try {
+    const text = await fetchViaLocalServer(videoId);
+    if (text) return text;
+  } catch (_) {}
+  // 2. InnerTube API
   try {
     const text = await fetchViaInnerTube(videoId);
     if (text) return text;
   } catch (_) {}
+  // 3. Watch-page HTML parse
   try {
     return await fetchViaPageParse(videoId);
   } catch (_) {}

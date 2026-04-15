@@ -673,6 +673,28 @@ body {
   min-height: 16px;
 }
 
+.server-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #444;
+  padding: 8px 10px;
+  background: #f8f8f8;
+  border-radius: 8px;
+  border: 1px solid #ebebeb;
+}
+
+.server-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot-checking { background: #bbb; animation: ts-pulse 1s ease-in-out infinite; }
+.dot-online   { background: #22c55e; }
+.dot-offline  { background: #ef4444; }
+
 /* ── AI output panel ─────────────────────────────────────────────────────── */
 
 .lab-ai-output {

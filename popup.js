@@ -429,6 +429,31 @@ document.getElementById('btn-clear-lab').addEventListener('click', () => {
   chrome.storage.local.set({ labEntries: [] }, refreshLab);
 });
 
+// ─── Settings — server status check ──────────────────────────────────────────
+
+async function checkServerStatus() {
+  const dot   = document.getElementById('server-dot');
+  const label = document.getElementById('server-label');
+  dot.className   = 'server-dot dot-checking';
+  label.textContent = 'Checking…';
+  try {
+    const res = await fetch('http://localhost:3000/', { signal: AbortSignal.timeout(3000) });
+    if (res.ok) {
+      dot.className   = 'server-dot dot-online';
+      label.textContent = 'Server running — transcripts will use yt_dlp';
+    } else {
+      throw new Error();
+    }
+  } catch (_) {
+    dot.className   = 'server-dot dot-offline';
+    label.textContent = 'Server offline — run launch.command to start it';
+  }
+}
+
+// Check on open and on button click
+checkServerStatus();
+document.getElementById('btn-check-server').addEventListener('click', checkServerStatus);
+
 // ─── Settings events ──────────────────────────────────────────────────────────
 
 document.getElementById('btn-save-settings').addEventListener('click', () => {
