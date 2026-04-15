@@ -25,12 +25,14 @@ async function writeTranscript(videoId, text) {
 
 // ─── Transcript fetch ─────────────────────────────────────────────────────────
 //
-// Primary: YouTube InnerTube API — the same endpoint YouTube's web client calls.
-// Returns structured JSON with real signed caption URLs, no HTML parsing needed.
-// The extension's host_permissions include youtube.com so cookies travel with
-// the request, making it behave like a logged-in browser tab.
+// Background service workers use the extension's own cookie jar — NOT the user's
+// browser session. InnerTube requires YouTube session cookies, so it only works
+// when called from a content script (content.js fetchTranscriptFromPage Strategy 2).
+// From background, the reliable fallback is watch-page HTML parsing.
 //
-// Fallback: watch-page HTML parsing with a bracket-counting JSON extractor.
+// Primary path: background delegates to an open YouTube tab via
+// chrome.tabs.sendMessage → content script calls fetchTranscriptFromPage() with
+// the user's cookies. The code below is only reached when no YT tab is available.
 
 function pickTrack(tracks) {
   return (
@@ -132,12 +134,8 @@ async function fetchTranscript(videoId) {
     const text = await fetchViaLocalServer(videoId);
     if (text) return text;
   } catch (_) {}
-  // 2. InnerTube API
-  try {
-    const text = await fetchViaInnerTube(videoId);
-    if (text) return text;
-  } catch (_) {}
-  // 3. Watch-page HTML parse
+  // 2. Watch-page HTML parse (background has no user session cookies so
+  //    InnerTube is skipped here — it's used in content.js instead)
   try {
     return await fetchViaPageParse(videoId);
   } catch (_) {}
