@@ -176,12 +176,14 @@ function buildLabCard(entry, transcripts) {
   ].filter(Boolean).join('');
 
   const hasTranscript = tr && tr.text;
+  const isSelected = selectedLabIds.has(entry.id);
 
   const div = document.createElement('div');
-  div.className = 'lab-card';
+  div.className = `lab-card${selectMode ? ' selectable' : ''}${isSelected ? ' selected' : ''}`;
   div.dataset.id = entry.id;
   div.innerHTML = `
     <div class="lab-card-top">
+      ${selectMode ? `<div class="lab-select-chip${isSelected ? ' checked' : ''}" aria-hidden="true"><span class="lab-select-icon">${isSelected ? '✓' : ''}</span></div>` : ''}
       <img class="lab-thumb" src="${escapeHtml(entry.thumbnail)}"
         alt="Thumbnail" onerror="this.style.display='none'">
       <div class="lab-card-meta">
@@ -342,6 +344,67 @@ Format with clearly labelled sections (Intro, Main Points, CTA, etc.). Write in 
   }
 }
 
+// ─── Batch repurpose ──────────────────────────────────────────────────────────
+
+async function handleBatchRepurpose(entries) {
+  // Show intent form in a dedicated overlay div
+  const batchOutEl = document.getElementById('lab-batch-output');
+  const intent = await collectIntent(batchOutEl, 'batch');
+  if (intent === null) return;
+
+  const btn = document.getElementById('btn-batch-repurpose');
+  const origLabel = btn.textContent;
+  btn.disabled = true;
+  batchOutEl.style.display = 'block';
+  batchOutEl.innerHTML = '<div class="lab-ai-loading"><span class="lab-ai-spinner"></span> Synthesising…</div>';
+
+  // Build per-video context, sharing token budget evenly
+  const perBudget = Math.floor(5400 / entries.length);
+  const videosContext = entries.map((entry, i) => {
+    const tr = cleanTranscript(transcriptCache[entry.videoId]?.text || '');
+    const trExcerpt = tr ? `\nTranscript:\n${tr.slice(0, perBudget)}${tr.length > perBudget ? '…' : ''}` : '\n(No transcript available)';
+    return `--- Video ${i + 1}: ${entry.title || 'Unknown'} ---\nChannel: ${entry.channelName || '?'} | Views: ${entry.views || '?'} | Duration: ${entry.duration || '?'}${trExcerpt}`;
+  }).join('\n\n');
+
+  const messages = [{
+    role: 'user',
+    content: `You are a YouTube content strategist. I've selected ${entries.length} videos as reference material for creating new content.
+${intent ? `\nMy goal: ${intent}\n` : ''}
+Here are the reference videos:
+
+${videosContext}
+
+Based on ALL these videos:
+1. Identify the strongest ideas, hooks, angles, and structures they share or each uniquely offer
+2. Synthesise a content outline that combines the best elements
+3. Write a working script or detailed outline I can record from
+
+Format with clearly labelled sections (Hook, Intro, Main Points, CTA, etc.). Write in first person, conversational tone. Tailor everything to the stated goal.`,
+  }];
+
+  const result = await new Promise(resolve =>
+    chrome.runtime.sendMessage({ action: 'CLAUDE_API', payload: { messages, maxTokens: 2000 } }, resolve)
+  );
+
+  btn.disabled = false;
+  btn.textContent = origLabel;
+
+  if (result?.ok) {
+    const uid = `batch-${Date.now()}`;
+    batchOutEl.innerHTML = `
+      <div class="lab-ai-content">
+        <div class="lab-ai-header">
+          <span class="lab-ai-label">🔄 Batch Script (${entries.length} videos)</span>
+          <button class="lab-ai-copy" data-uid="${uid}">Copy</button>
+        </div>
+        <pre class="lab-ai-text" id="ai-text-${uid}">${escapeHtml(result.content)}</pre>
+      </div>
+    `;
+  } else {
+    batchOutEl.innerHTML = `<p class="lab-ai-error">⚠ ${escapeHtml(result?.error || 'Request failed')}</p>`;
+  }
+}
+
 // ─── State ────────────────────────────────────────────────────────────────────
 
 let allEntries    = [];
@@ -350,9 +413,31 @@ let transcriptCache = {};
 let activeFilter  = 'all';
 let searchQuery   = '';
 let labQuery      = '';
+let selectMode    = false;
+let selectedLabIds = new Set();
 
 function refresh()    { renderInspiration(allEntries, activeFilter, searchQuery); }
 function refreshLab() { renderLab(allLabEntries, transcriptCache, labQuery); }
+
+function updateBatchBar() {
+  const bar   = document.getElementById('lab-batch-bar');
+  const count = document.getElementById('lab-batch-count');
+  const n = selectedLabIds.size;
+  bar.hidden = n === 0;
+  count.textContent = `${n} video${n !== 1 ? 's' : ''} selected`;
+}
+
+function toggleSelectMode(on) {
+  selectMode = on;
+  const btn = document.getElementById('btn-lab-select');
+  btn.classList.toggle('active', on);
+  btn.textContent = on ? 'Done' : 'Select';
+  if (!on) {
+    selectedLabIds.clear();
+    updateBatchBar();
+  }
+  refreshLab();
+}
 
 function sendToLab(entry, btn) {
   const labEntry = {
@@ -454,7 +539,31 @@ document.getElementById('lab-search').addEventListener('input', (e) => {
   refreshLab();
 });
 
+document.getElementById('btn-lab-select').addEventListener('click', () => {
+  toggleSelectMode(!selectMode);
+});
+
 document.getElementById('lab-board').addEventListener('click', async (e) => {
+  // In select mode, clicking anywhere on the card (except action buttons) toggles selection
+  if (selectMode) {
+    const skip = e.target.closest('.lab-actions, .lab-transcript, .lab-ai-output, a');
+    if (!skip) {
+      const card = e.target.closest('.lab-card');
+      if (card) {
+        const id = Number(card.dataset.id);
+        if (selectedLabIds.has(id)) selectedLabIds.delete(id);
+        else selectedLabIds.add(id);
+        // Re-render just this card's classes and chip
+        card.classList.toggle('selected', selectedLabIds.has(id));
+        const chip = card.querySelector('.lab-select-chip');
+        const icon = card.querySelector('.lab-select-icon');
+        if (chip) chip.classList.toggle('checked', selectedLabIds.has(id));
+        if (icon) icon.textContent = selectedLabIds.has(id) ? '✓' : '';
+        updateBatchBar();
+        return;
+      }
+    }
+  }
   // Copy AI output
   if (e.target.classList.contains('lab-ai-copy')) {
     const uid = e.target.dataset.uid;
@@ -478,9 +587,21 @@ document.getElementById('lab-board').addEventListener('click', async (e) => {
   // Delete
   if (e.target.classList.contains('btn-delete-lab')) {
     const id = Number(e.target.dataset.id);
+    selectedLabIds.delete(id);
     allLabEntries = allLabEntries.filter(entry => entry.id !== id);
-    chrome.storage.local.set({ labEntries: allLabEntries }, refreshLab);
+    chrome.storage.local.set({ labEntries: allLabEntries }, () => { updateBatchBar(); refreshLab(); });
   }
+});
+
+document.getElementById('btn-batch-repurpose').addEventListener('click', () => {
+  const entries = allLabEntries.filter(e => selectedLabIds.has(e.id));
+  if (entries.length) handleBatchRepurpose(entries);
+});
+
+document.getElementById('btn-batch-deselect').addEventListener('click', () => {
+  selectedLabIds.clear();
+  updateBatchBar();
+  refreshLab();
 });
 
 document.getElementById('btn-clear-lab').addEventListener('click', () => {

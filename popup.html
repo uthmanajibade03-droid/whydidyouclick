@@ -56,10 +56,20 @@
       <div class="search-wrap" style="flex:1">
         <input type="text" id="lab-search" placeholder="Search lab…" autocomplete="off">
       </div>
+      <button id="btn-lab-select" class="lab-select-toggle" title="Select videos to batch repurpose">Select</button>
       <span id="lab-count" class="lab-count-badge"></span>
     </div>
 
     <div id="lab-board"></div>
+
+    <div id="lab-batch-bar" class="lab-batch-bar" hidden>
+      <span id="lab-batch-count" class="lab-batch-count"></span>
+      <div class="lab-batch-btns">
+        <button id="btn-batch-repurpose" class="lab-batch-btn-primary">🔄 Batch Repurpose</button>
+        <button id="btn-batch-deselect" class="lab-batch-btn-secondary">Deselect all</button>
+      </div>
+    </div>
+    <div id="lab-batch-output" class="lab-batch-output" style="display:none"></div>
   </div>
 
   <!-- ── SETTINGS ───────────────────────────────────────────────────────── -->

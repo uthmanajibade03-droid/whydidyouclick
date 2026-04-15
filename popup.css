@@ -444,6 +444,24 @@ body {
   flex-shrink: 0;
 }
 
+/* ── Select toggle button ─────────────────────────────────────────────────── */
+
+.lab-select-toggle {
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #f3eeff;
+  border: 1.5px solid #c4b5fd;
+  border-radius: 8px;
+  padding: 4px 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.12s, border-color 0.12s;
+}
+.lab-select-toggle:hover  { background: #ede9fe; }
+.lab-select-toggle.active { background: #7c3aed; color: #fff; border-color: #7c3aed; }
+
 /* Lab card */
 .lab-card {
   border: 1.5px solid #ebebeb;
@@ -451,9 +469,30 @@ body {
   overflow: hidden;
   background: #fff;
   margin-bottom: 10px;
-  transition: box-shadow 0.15s;
+  transition: box-shadow 0.15s, border-color 0.15s, background 0.15s;
 }
 .lab-card:hover { box-shadow: 0 3px 16px rgba(0,0,0,0.09); }
+.lab-card.selectable { cursor: pointer; }
+.lab-card.selectable:hover { border-color: #c4b5fd; }
+.lab-card.selected  { border-color: #7c3aed; background: #faf5ff; box-shadow: 0 0 0 3px #ede9fe; }
+
+/* Selection chip (checkmark circle shown in select mode) */
+.lab-select-chip {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid #c4b5fd;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-right: 8px;
+  transition: background 0.12s, border-color 0.12s;
+  align-self: center;
+}
+.lab-select-chip.checked { background: #7c3aed; border-color: #7c3aed; }
+.lab-select-icon { font-size: 12px; font-weight: 700; color: #fff; line-height: 1; }
 
 .lab-card-top {
   display: flex;
@@ -846,3 +885,67 @@ body {
   padding: 4px 6px;
 }
 .lab-intent-cancel:hover { color: #333; }
+
+/* ── Batch action bar ────────────────────────────────────────────────────── */
+
+.lab-batch-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #5b21b6;
+  flex-shrink: 0;
+}
+
+.lab-batch-count {
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.lab-batch-btns {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.lab-batch-btn-primary {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  background: #fff;
+  color: #5b21b6;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.lab-batch-btn-primary:hover { background: #ede9fe; }
+.lab-batch-btn-primary:disabled { opacity: 0.5; cursor: wait; }
+
+.lab-batch-btn-secondary {
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.35);
+  border-radius: 8px;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.lab-batch-btn-secondary:hover { background: rgba(255,255,255,0.25); }
+
+/* ── Batch AI output (shown below batch bar) ─────────────────────────────── */
+
+.lab-batch-output {
+  border-top: 1px solid #ede9fe;
+  background: #faf5ff;
+  padding: 12px 14px;
+  flex-shrink: 0;
+  max-height: 320px;
+  overflow-y: auto;
+}
