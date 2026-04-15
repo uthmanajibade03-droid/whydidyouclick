@@ -32,15 +32,18 @@ const TYPE_LABEL = { title: '📝 Title', thumbnail: '🖼 Thumbnail', both: '�
 const PANELS = { inspiration: 'panel-inspiration', lab: 'panel-lab', settings: 'panel-settings' };
 let activeMode = 'inspiration';
 
-document.querySelectorAll('.mode-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    activeMode = btn.dataset.mode;
-    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    Object.values(PANELS).forEach(id => {
-      document.getElementById(id).hidden = (id !== PANELS[activeMode]);
-    });
+function switchToMode(mode) {
+  activeMode = mode;
+  document.querySelectorAll('.mode-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === mode);
   });
+  Object.values(PANELS).forEach(id => {
+    document.getElementById(id).hidden = (id !== PANELS[mode]);
+  });
+}
+
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => switchToMode(btn.dataset.mode));
 });
 
 // ─── Inspiration Board — card builders ───────────────────────────────────────
@@ -361,13 +364,14 @@ function sendToLab(entry, btn) {
       chrome.runtime.sendMessage({ action: 'FETCH_TRANSCRIPT', videoId: labEntry.videoId });
       allLabEntries = filtered;
       refreshLab();
+      switchToMode('lab');
       if (btn) { btn.textContent = '✅'; btn.disabled = true; }
     });
   });
 }
 
 // Initial load
-chrome.storage.local.get(['entries', 'labEntries', 'transcripts', 'settings'], (result) => {
+chrome.storage.local.get(['entries', 'labEntries', 'transcripts', 'settings', 'pendingMode'], (result) => {
   allEntries      = result.entries      || [];
   allLabEntries   = result.labEntries   || [];
   transcriptCache = result.transcripts  || {};
@@ -376,6 +380,11 @@ chrome.storage.local.get(['entries', 'labEntries', 'transcripts', 'settings'], (
   const s = result.settings || {};
   document.getElementById('settings-api-key').value = s.claudeApiKey || '';
   document.getElementById('settings-model').value   = s.claudeModel  || 'claude-sonnet-4-6';
+  // Auto-switch to Content Lab if triggered by a "Save to Lab" action
+  if (result.pendingMode === 'lab') {
+    switchToMode('lab');
+    chrome.storage.local.remove('pendingMode');
+  }
 });
 
 // Real-time updates
@@ -384,6 +393,11 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (changes.entries)     { allEntries      = changes.entries.newValue      || []; refresh(); }
   if (changes.labEntries)  { allLabEntries   = changes.labEntries.newValue   || []; refreshLab(); }
   if (changes.transcripts) { transcriptCache = changes.transcripts.newValue  || {}; refreshLab(); }
+  // Switch to Content Lab when content.js signals a new save
+  if (changes.pendingMode?.newValue === 'lab') {
+    switchToMode('lab');
+    chrome.storage.local.remove('pendingMode');
+  }
 });
 
 // ─── Inspiration Board events ─────────────────────────────────────────────────

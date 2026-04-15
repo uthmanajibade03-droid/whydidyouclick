@@ -240,4 +240,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     handleClaudeApi(msg.payload, sendResponse);
     return true;
   }
+  if (msg.action === 'OPEN_SIDE_PANEL_LAB') {
+    // Set a flag so the popup switches to Content Lab when it (re)opens
+    chrome.storage.local.set({ pendingMode: 'lab' });
+    // Also try to open the panel immediately (requires user gesture propagation)
+    if (_sender.tab?.windowId) {
+      chrome.sidePanel.open({ windowId: _sender.tab.windowId }).catch(() => {});
+    }
+    sendResponse({ ok: true });
+    return true;
+  }
 });

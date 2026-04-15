@@ -267,6 +267,10 @@
   });
 
   async function saveLabEntry(videoInfo) {
+    // Signal background to open the side panel and switch to Content Lab.
+    // Sent before any awaits to stay as close to the user gesture as possible.
+    chrome.runtime.sendMessage({ action: 'OPEN_SIDE_PANEL_LAB' });
+
     const stats = extractWatchPageStats(videoInfo.videoId);
     const entry = {
       id: Date.now(),
