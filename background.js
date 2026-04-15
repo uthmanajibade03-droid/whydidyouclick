@@ -23,13 +23,59 @@ async function writeTranscript(videoId, text) {
   await chrome.storage.local.set({ transcripts });
 }
 
-// ─── Transcript fetch — watch page parsing (most reliable) ───────────────────
+// ─── Transcript fetch ─────────────────────────────────────────────────────────
 //
-// YouTube's /api/timedtext endpoint requires signed params we don't have.
-// The real caption track URLs live inside the page's ytInitialPlayerResponse.
-// We fetch the watch page, find "captionTracks":[…] with a bracket-counter
-// (regex fails on large nested JSON), parse the array, then fetch the real URL.
+// Primary: YouTube InnerTube API — the same endpoint YouTube's web client calls.
+// Returns structured JSON with real signed caption URLs, no HTML parsing needed.
+// The extension's host_permissions include youtube.com so cookies travel with
+// the request, making it behave like a logged-in browser tab.
+//
+// Fallback: watch-page HTML parsing with a bracket-counting JSON extractor.
 
+function pickTrack(tracks) {
+  return (
+    tracks.find(t => t.languageCode === 'en' && t.kind !== 'asr') || // manual EN
+    tracks.find(t => t.languageCode === 'en') ||                      // auto-gen EN
+    tracks.find(t => t.languageCode?.startsWith('en')) ||             // en-GB etc.
+    tracks[0]                                                         // whatever exists
+  );
+}
+
+async function trackToText(track) {
+  if (!track?.baseUrl) return null;
+  const res = await fetch(track.baseUrl + '&fmt=json3');
+  if (!res.ok) return null;
+  const json = await res.json();
+  return (json.events || [])
+    .flatMap(e => (e.segs || []).map(s => s.utf8 || ''))
+    .join(' ').replace(/\s+/g, ' ').trim() || null;
+}
+
+// Strategy 1 — InnerTube API (fast, structured, same API yt-dlp uses)
+async function fetchViaInnerTube(videoId) {
+  const res = await fetch('https://www.youtube.com/youtubei/v1/player', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      videoId,
+      context: {
+        client: {
+          clientName: 'WEB',
+          clientVersion: '2.20231121.01.00',
+          hl: 'en',
+          gl: 'US',
+        },
+      },
+    }),
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  const tracks = data.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+  if (!tracks?.length) return null;
+  return trackToText(pickTrack(tracks));
+}
+
+// Strategy 2 — Watch-page HTML parsing (fallback)
 function extractJsonArray(html, marker) {
   const idx = html.indexOf(marker);
   if (idx === -1) return null;
@@ -53,41 +99,31 @@ function extractJsonArray(html, marker) {
   return null;
 }
 
-async function fetchTranscriptViaPage(videoId) {
+async function fetchViaPageParse(videoId) {
+  const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+    headers: { 'Accept-Language': 'en-US,en;q=0.9' },
+  });
+  if (!res.ok) return null;
+  const html = await res.text();
+  const tracks = extractJsonArray(html, '"captionTracks":');
+  if (!tracks?.length) return null;
+  return trackToText(pickTrack(tracks));
+}
+
+async function fetchTranscript(videoId) {
   try {
-    const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
-      headers: { 'Accept-Language': 'en-US,en;q=0.9' },
-    });
-    if (!res.ok) return null;
-    const html = await res.text();
-
-    const tracks = extractJsonArray(html, '"captionTracks":');
-    if (!tracks?.length) return null;
-
-    // Prefer manual English > auto-generated English > any English > first track
-    const track =
-      tracks.find(t => t.languageCode === 'en' && t.kind !== 'asr') ||
-      tracks.find(t => t.languageCode === 'en') ||
-      tracks.find(t => t.languageCode?.startsWith('en')) ||
-      tracks[0];
-
-    if (!track?.baseUrl) return null;
-
-    const capRes = await fetch(track.baseUrl + '&fmt=json3');
-    if (!capRes.ok) return null;
-    const json = await capRes.json();
-    const text = (json.events || [])
-      .flatMap(e => (e.segs || []).map(s => s.utf8 || ''))
-      .join(' ').replace(/\s+/g, ' ').trim();
-    return text || null;
-  } catch (_) {
-    return null;
-  }
+    const text = await fetchViaInnerTube(videoId);
+    if (text) return text;
+  } catch (_) {}
+  try {
+    return await fetchViaPageParse(videoId);
+  } catch (_) {}
+  return null;
 }
 
 async function handleFetchTranscript(videoId, sendResponse) {
   try {
-    const text = await fetchTranscriptViaPage(videoId);
+    const text = await fetchTranscript(videoId);
     await writeTranscript(videoId, text);
     sendResponse({ ok: true, unavailable: !text });
   } catch (err) {
