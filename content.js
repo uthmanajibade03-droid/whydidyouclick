@@ -164,35 +164,86 @@
     });
   }
 
-  function saveLabEntry(videoInfo) {
-    return new Promise((resolve) => {
-      const stats = extractWatchPageStats();
-      const entry = {
-        id: Date.now(),
-        videoId: videoInfo.videoId,
-        url: videoInfo.url,
-        date: new Date().toISOString(),
-        title: videoInfo.title,
-        thumbnail: videoInfo.thumbnail,
-        views: stats.views,
-        likes: stats.likes,
-        channelName: stats.channelName,
-        duration: stats.duration,
-        transcriptStatus: 'pending',
-      };
+  // ─── Direct transcript fetch (faster — runs in YouTube page context) ──────
+
+  async function fetchTranscriptFromPage(videoId) {
+    // Strategy 1: ytInitialPlayerResponse caption track URL (watch page only)
+    try {
+      const tracks = window.ytInitialPlayerResponse
+        ?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+      if (tracks?.length) {
+        const track = tracks.find(t => t.languageCode === 'en') || tracks[0];
+        if (track?.baseUrl) {
+          const res = await fetch(track.baseUrl + '&fmt=json3');
+          if (res.ok) {
+            const json = await res.json();
+            const text = (json.events || [])
+              .flatMap(e => (e.segs || []).map(s => s.utf8 || ''))
+              .join(' ').replace(/\s+/g, ' ').trim();
+            if (text) return text;
+          }
+        }
+      }
+    } catch (_) {}
+
+    // Strategy 2: timedtext API with YouTube cookies (same-origin)
+    for (const suffix of ['&lang=en', '&tlang=en']) {
+      try {
+        const res = await fetch(
+          `https://www.youtube.com/api/timedtext?v=${videoId}&fmt=json3${suffix}`
+        );
+        if (res.ok) {
+          const json = await res.json();
+          const text = (json.events || [])
+            .flatMap(e => (e.segs || []).map(s => s.utf8 || ''))
+            .join(' ').replace(/\s+/g, ' ').trim();
+          if (text) return text;
+        }
+      } catch (_) {}
+    }
+    return null; // null = could not fetch (background will retry)
+  }
+
+  async function saveLabEntry(videoInfo) {
+    const stats = extractWatchPageStats();
+    const entry = {
+      id: Date.now(),
+      videoId: videoInfo.videoId,
+      url: videoInfo.url,
+      date: new Date().toISOString(),
+      title: videoInfo.title,
+      thumbnail: videoInfo.thumbnail,
+      views: stats.views,
+      likes: stats.likes,
+      channelName: stats.channelName,
+      duration: stats.duration,
+      transcriptStatus: 'pending',
+    };
+
+    // Persist the lab entry immediately so the panel shows it right away
+    await new Promise(resolve => {
       chrome.storage.local.get(['labEntries'], (result) => {
         const labEntries = result.labEntries || [];
-        // Avoid duplicates — remove previous save of same videoId
         const filtered = labEntries.filter(e => e.videoId !== entry.videoId);
         filtered.unshift(entry);
         if (filtered.length > 200) filtered.splice(200);
-        chrome.storage.local.set({ labEntries: filtered }, () => {
-          // Fire-and-forget transcript fetch via background service worker
-          chrome.runtime.sendMessage({ action: 'FETCH_TRANSCRIPT', videoId: videoInfo.videoId });
-          resolve();
-        });
+        chrome.storage.local.set({ labEntries: filtered }, resolve);
       });
     });
+
+    // Fetch transcript in page context (has YouTube cookies — much faster)
+    const text = await fetchTranscriptFromPage(videoInfo.videoId);
+    if (text !== null) {
+      // Send fetched text to background to store (or mark unavailable if empty)
+      chrome.runtime.sendMessage({
+        action: 'STORE_TRANSCRIPT',
+        videoId: videoInfo.videoId,
+        text: text || '',
+      });
+    } else {
+      // Fallback: let background service worker try its own fetch
+      chrome.runtime.sendMessage({ action: 'FETCH_TRANSCRIPT', videoId: videoInfo.videoId });
+    }
   }
 
   // ─── Drop zone ────────────────────────────────────────────────────────────

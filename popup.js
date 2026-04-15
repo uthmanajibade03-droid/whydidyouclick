@@ -14,13 +14,13 @@ function escapeHtml(str) {
 function formatDate(iso) {
   const d = new Date(iso);
   const now = new Date();
-  const diffMins = Math.floor((now - d) / 60000);
-  if (diffMins < 1)  return 'Just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffSecs = Math.floor((now - d) / 1000);
+  if (diffSecs < 60)   return 'Just now';
+  if (diffSecs < 3600) return `${Math.floor(diffSecs / 60)}m ago`;
   const diffDays = Math.floor((now - d) / 86400000);
-  if (diffDays === 0) return 'Today ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  if (diffDays === 1) return 'Yesterday';
-  if (diffDays < 7)  return `${diffDays} days ago`;
+  if (diffDays === 0)  return 'Today ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  if (diffDays === 1)  return 'Yesterday';
+  if (diffDays < 7)   return `${diffDays} days ago`;
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
@@ -161,6 +161,8 @@ function buildLabCard(entry, transcripts) {
     entry.channelName  && `<span class="lab-stat">📺 ${escapeHtml(entry.channelName)}</span>`,
   ].filter(Boolean).join('');
 
+  const hasTranscript = tr && tr.text;
+
   const div = document.createElement('div');
   div.className = 'lab-card';
   div.dataset.id = entry.id;
@@ -185,10 +187,13 @@ function buildLabCard(entry, transcripts) {
     ` : ''}
     <div class="lab-actions">
       <a href="${escapeHtml(entry.url)}" target="_blank" class="btn-watch">▶ Watch</a>
-      <button class="lab-ai-btn" disabled title="AI features coming in Phase 2">✨ Analyse</button>
-      <button class="lab-ai-btn" disabled title="AI features coming in Phase 2">📝 Rewrite</button>
+      <button class="lab-ai-btn" data-action="analyse" data-id="${entry.id}"
+        ${hasTranscript ? '' : 'title="Save transcript first"'}>✨ Analyse</button>
+      <button class="lab-ai-btn" data-action="rewrite" data-id="${entry.id}"
+        ${hasTranscript ? '' : 'disabled title="Transcript required"'}>📝 Rewrite</button>
       <button class="btn-delete-lab" data-id="${entry.id}" title="Delete">🗑</button>
     </div>
+    <div class="lab-ai-output" id="ai-out-${entry.id}" style="display:none"></div>
   `;
   return div;
 }
@@ -217,6 +222,75 @@ function renderLab(labEntries, transcripts, query) {
   list.forEach(e => board.appendChild(buildLabCard(e, transcripts)));
 }
 
+// ─── AI actions ───────────────────────────────────────────────────────────────
+
+async function handleAiAction(action, entry, btn) {
+  const outEl = document.getElementById(`ai-out-${entry.id}`);
+  if (!outEl) return;
+
+  const tr = transcriptCache[entry.videoId];
+  const transcript = tr?.text || '';
+
+  let messages;
+  if (action === 'analyse') {
+    messages = [{
+      role: 'user',
+      content: `You are a YouTube content strategist. Analyse this video and explain in 4–5 bullet points why it performs well and what creators can learn from it.
+
+Title: ${entry.title || 'Unknown'}
+Views: ${entry.views || '?'} | Likes: ${entry.likes || '?'} | Channel: ${entry.channelName || '?'} | Duration: ${entry.duration || '?'}
+${transcript ? `\nTranscript (excerpt):\n${transcript.slice(0, 3000)}` : '(No transcript available)'}
+
+Be concise and actionable.`,
+    }];
+  } else {
+    if (!transcript) {
+      outEl.style.display = 'block';
+      outEl.innerHTML = '<p class="lab-ai-error">No transcript available to rewrite.</p>';
+      return;
+    }
+    messages = [{
+      role: 'user',
+      content: `Rewrite this YouTube video transcript as a clean recording script I can use to create my own video on this topic. Keep the key ideas but use fresh language and clear structure.
+
+Original transcript:
+${transcript.slice(0, 4000)}
+
+Format with clearly labelled sections (Intro, Main Points, CTA, etc.). Write in first person, conversational tone.`,
+    }];
+  }
+
+  // Show loading state
+  const origLabel = btn.textContent;
+  btn.disabled = true;
+  btn.classList.add('lab-ai-btn--loading');
+  outEl.style.display = 'block';
+  outEl.innerHTML = '<div class="lab-ai-loading"><span class="lab-ai-spinner"></span> Thinking…</div>';
+
+  const result = await new Promise(resolve =>
+    chrome.runtime.sendMessage({ action: 'CLAUDE_API', payload: { messages, maxTokens: 1024 } }, resolve)
+  );
+
+  btn.disabled = false;
+  btn.classList.remove('lab-ai-btn--loading');
+  btn.textContent = origLabel;
+
+  if (result?.ok) {
+    const uid = `${entry.id}-${action}`;
+    outEl.innerHTML = `
+      <div class="lab-ai-content">
+        <div class="lab-ai-header">
+          <span class="lab-ai-label">${action === 'analyse' ? '✨ Analysis' : '📝 Script'}</span>
+          <button class="lab-ai-copy" data-uid="${uid}">Copy</button>
+        </div>
+        <pre class="lab-ai-text" id="ai-text-${uid}">${escapeHtml(result.content)}</pre>
+      </div>
+    `;
+  } else {
+    outEl.innerHTML = `<p class="lab-ai-error">⚠ ${escapeHtml(result?.error || 'Request failed')}</p>`;
+  }
+}
+
 // ─── State ────────────────────────────────────────────────────────────────────
 
 let allEntries    = [];
@@ -237,10 +311,7 @@ function sendToLab(entry, btn) {
     date: new Date().toISOString(),
     title: entry.title || '',
     thumbnail: entry.thumbnail || `https://i.ytimg.com/vi/${entry.videoId}/mqdefault.jpg`,
-    views: null,
-    likes: null,
-    channelName: null,
-    duration: null,
+    views: null, likes: null, channelName: null, duration: null,
     transcriptStatus: 'pending',
   };
   chrome.storage.local.get(['labEntries'], (result) => {
@@ -264,7 +335,6 @@ chrome.storage.local.get(['entries', 'labEntries', 'transcripts', 'settings'], (
   transcriptCache = result.transcripts  || {};
   refresh();
   refreshLab();
-  // Populate settings fields
   const s = result.settings || {};
   document.getElementById('settings-api-key').value = s.claudeApiKey || '';
   document.getElementById('settings-model').value   = s.claudeModel  || 'claude-sonnet-4-6';
@@ -301,10 +371,11 @@ document.getElementById('board').addEventListener('click', (e) => {
     if (entry) sendToLab(entry, e.target);
     return;
   }
-  if (!e.target.classList.contains('btn-delete')) return;
-  const id = Number(e.target.dataset.id);
-  allEntries = allEntries.filter(entry => entry.id !== id);
-  chrome.storage.local.set({ entries: allEntries }, refresh);
+  if (e.target.classList.contains('btn-delete')) {
+    const id = Number(e.target.dataset.id);
+    allEntries = allEntries.filter(entry => entry.id !== id);
+    chrome.storage.local.set({ entries: allEntries }, refresh);
+  }
 });
 
 document.getElementById('btn-clear-all').addEventListener('click', () => {
@@ -321,11 +392,33 @@ document.getElementById('lab-search').addEventListener('input', (e) => {
   refreshLab();
 });
 
-document.getElementById('lab-board').addEventListener('click', (e) => {
-  if (!e.target.classList.contains('btn-delete-lab')) return;
-  const id = Number(e.target.dataset.id);
-  allLabEntries = allLabEntries.filter(entry => entry.id !== id);
-  chrome.storage.local.set({ labEntries: allLabEntries }, refreshLab);
+document.getElementById('lab-board').addEventListener('click', async (e) => {
+  // Copy AI output
+  if (e.target.classList.contains('lab-ai-copy')) {
+    const uid = e.target.dataset.uid;
+    const textEl = document.getElementById(`ai-text-${uid}`);
+    if (textEl) {
+      navigator.clipboard.writeText(textEl.textContent).then(() => {
+        e.target.textContent = 'Copied!';
+        setTimeout(() => { e.target.textContent = 'Copy'; }, 2000);
+      });
+    }
+    return;
+  }
+  // AI action buttons
+  if (e.target.classList.contains('lab-ai-btn') && !e.target.disabled) {
+    const action = e.target.dataset.action;
+    const id = Number(e.target.dataset.id);
+    const entry = allLabEntries.find(en => en.id === id);
+    if (entry) await handleAiAction(action, entry, e.target);
+    return;
+  }
+  // Delete
+  if (e.target.classList.contains('btn-delete-lab')) {
+    const id = Number(e.target.dataset.id);
+    allLabEntries = allLabEntries.filter(entry => entry.id !== id);
+    chrome.storage.local.set({ labEntries: allLabEntries }, refreshLab);
+  }
 });
 
 document.getElementById('btn-clear-lab').addEventListener('click', () => {
