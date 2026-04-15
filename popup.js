@@ -207,6 +207,8 @@ function buildLabCard(entry, transcripts) {
         ${hasTranscript ? '' : 'title="Save transcript first"'}>✨ Analyse</button>
       <button class="lab-ai-btn" data-action="rewrite" data-id="${entry.id}"
         ${hasTranscript ? '' : 'disabled title="Transcript required"'}>📝 Rewrite</button>
+      <button class="lab-ai-btn" data-action="slides" data-id="${entry.id}"
+        ${hasTranscript ? '' : 'disabled title="Transcript required"'}>📊 Slides</button>
       <button class="btn-delete-lab" data-id="${entry.id}" title="Delete">🗑</button>
     </div>
     <div class="lab-ai-output" id="ai-out-${entry.id}" style="display:none"></div>
@@ -236,6 +238,20 @@ function renderLab(labEntries, transcripts, query) {
   }
 
   list.forEach(e => board.appendChild(buildLabCard(e, transcripts)));
+}
+
+// ─── Download helper ──────────────────────────────────────────────────────────
+
+function downloadOutput(videoTitle, text, suffix) {
+  const slug = (videoTitle || 'content')
+    .replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase().slice(0, 40);
+  const filename = `${slug}-${suffix}.md`;
+  const a = document.createElement('a');
+  a.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(text);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
 
 // ─── AI actions ───────────────────────────────────────────────────────────────
@@ -297,6 +313,37 @@ ${intent ? `\nRepurposing goal: ${intent}` : ''}${voiceNote}
 
 Tailor your analysis to help achieve the stated goal. Be concise and actionable.`,
     }];
+  } else if (action === 'slides') {
+    messages = [{
+      role: 'user',
+      content: `You are creating a slide deck for a YouTube video. Generate clean, scannable presentation slides that follow the transcript exactly — same flow, same order, nothing skipped.
+${intent ? `\nContext: ${intent}` : ''}${voiceNote}
+
+Title: ${entry.title || 'Unknown'}
+
+Transcript:
+${transcript.slice(0, 4000)}
+
+Generate 8–14 slides using this exact format (include the dividers):
+
+---
+## SLIDE 1 — [TITLE / HOOK]
+• [Opening hook or bold statement — ≤ 10 words]
+• [What the viewer will learn]
+
+## SLIDE 2 — [SECTION HEADING IN CAPS]
+• [Key point — ≤ 10 words]
+• [Supporting idea — ≤ 10 words]
+• [Stat, example, or quote — ≤ 12 words]
+---
+
+Rules:
+- One idea per slide — no cramming
+- Max 4 bullets per slide, each ≤ 12 words
+- Headings are bold, specific, and action-oriented
+- Follow the transcript order exactly
+- Final slide is a strong, clear Call to Action`,
+    }];
   } else {
     if (!transcript) {
       outEl.style.display = 'block';
@@ -336,11 +383,17 @@ After the script, add:
 
   if (result?.ok) {
     const uid = `${entry.id}-${action}`;
+    const actionLabels = { analyse: '✨ Analysis', rewrite: '📝 Script', slides: '📊 Slides' };
+    const suffix = action === 'slides' ? 'slides' : action === 'analyse' ? 'analysis' : 'script';
+    const videoTitle = entry.title || '';
     outEl.innerHTML = `
       <div class="lab-ai-content">
         <div class="lab-ai-header">
-          <span class="lab-ai-label">${action === 'analyse' ? '✨ Analysis' : '📝 Script'}</span>
-          <button class="lab-ai-copy" data-uid="${uid}">Copy</button>
+          <span class="lab-ai-label">${actionLabels[action] || '✨ Output'}</span>
+          <div class="lab-ai-header-btns">
+            <button class="lab-ai-download" data-uid="${uid}" data-title="${escapeHtml(videoTitle)}" data-suffix="${suffix}">↓ .md</button>
+            <button class="lab-ai-copy" data-uid="${uid}">Copy</button>
+          </div>
         </div>
         <pre class="lab-ai-text" id="ai-text-${uid}">${escapeHtml(result.content)}</pre>
       </div>
@@ -402,11 +455,15 @@ After the script, add:
 
   if (result?.ok) {
     const uid = `batch-${Date.now()}`;
+    const batchTitle = entries.map(e => e.title || '').filter(Boolean).join(', ').slice(0, 60) || 'batch';
     batchOutEl.innerHTML = `
       <div class="lab-ai-content">
         <div class="lab-ai-header">
           <span class="lab-ai-label">🔄 Batch Script (${entries.length} videos)</span>
-          <button class="lab-ai-copy" data-uid="${uid}">Copy</button>
+          <div class="lab-ai-header-btns">
+            <button class="lab-ai-download" data-uid="${uid}" data-title="${escapeHtml(batchTitle)}" data-suffix="batch-script">↓ .md</button>
+            <button class="lab-ai-copy" data-uid="${uid}">Copy</button>
+          </div>
         </div>
         <pre class="lab-ai-text" id="ai-text-${uid}">${escapeHtml(result.content)}</pre>
       </div>
@@ -580,6 +637,13 @@ document.getElementById('lab-board').addEventListener('click', async (e) => {
       }
     }
   }
+  // Download AI output
+  if (e.target.classList.contains('lab-ai-download')) {
+    const { uid, title, suffix } = e.target.dataset;
+    const textEl = document.getElementById(`ai-text-${uid}`);
+    if (textEl) downloadOutput(title, textEl.textContent, suffix || 'output');
+    return;
+  }
   // Copy AI output
   if (e.target.classList.contains('lab-ai-copy')) {
     const uid = e.target.dataset.uid;
@@ -621,8 +685,14 @@ document.getElementById('btn-batch-repurpose').addEventListener('click', () => {
   if (entries.length) handleBatchRepurpose(entries);
 });
 
-// Copy button inside the batch output panel (lives outside #lab-board)
+// Download + Copy buttons inside the batch output panel (lives outside #lab-board)
 document.getElementById('lab-batch-output').addEventListener('click', (e) => {
+  if (e.target.classList.contains('lab-ai-download')) {
+    const { uid, title, suffix } = e.target.dataset;
+    const textEl = document.getElementById(`ai-text-${uid}`);
+    if (textEl) downloadOutput(title, textEl.textContent, suffix || 'batch-script');
+    return;
+  }
   if (e.target.classList.contains('lab-ai-copy')) {
     const uid = e.target.dataset.uid;
     const textEl = document.getElementById(`ai-text-${uid}`);
