@@ -692,6 +692,7 @@ body {
   background: #fff;
 }
 .settings-input:focus { border-color: #ff0000; }
+.settings-textarea { resize: vertical; line-height: 1.55; }
 
 .settings-save-btn {
   align-self: flex-start;

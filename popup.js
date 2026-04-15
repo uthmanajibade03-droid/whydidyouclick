@@ -244,7 +244,7 @@ function renderLab(labEntries, transcripts, query) {
 // Resolves with the intent string (may be empty) or null if cancelled.
 function collectIntent(outEl, action) {
   return new Promise(resolve => {
-    const actionLabel = action === 'analyse' ? 'Analyse' : 'Rewrite';
+    const actionLabel = action === 'analyse' ? 'Analyse' : action === 'batch' ? 'Generate' : 'Rewrite';
     outEl.style.display = 'block';
     outEl.innerHTML = `
       <div class="lab-intent-form">
@@ -282,6 +282,8 @@ async function handleAiAction(action, entry, btn) {
   const intent = await collectIntent(outEl, action);
   if (intent === null) return; // user cancelled
 
+  const voiceNote = voiceProfile ? `\nVoice & style to match: ${voiceProfile}` : '';
+
   let messages;
   if (action === 'analyse') {
     messages = [{
@@ -291,7 +293,7 @@ async function handleAiAction(action, entry, btn) {
 Title: ${entry.title || 'Unknown'}
 Views: ${entry.views || '?'} | Likes: ${entry.likes || '?'} | Channel: ${entry.channelName || '?'} | Duration: ${entry.duration || '?'}
 ${transcript ? `\nTranscript (excerpt):\n${transcript.slice(0, 3000)}` : '(No transcript available)'}
-${intent ? `\nRepurposing goal: ${intent}` : ''}
+${intent ? `\nRepurposing goal: ${intent}` : ''}${voiceNote}
 
 Tailor your analysis to help achieve the stated goal. Be concise and actionable.`,
     }];
@@ -303,13 +305,17 @@ Tailor your analysis to help achieve the stated goal. Be concise and actionable.
     }
     messages = [{
       role: 'user',
-      content: `Rewrite this YouTube video transcript as a clean recording script I can use to create my own video on this topic. Keep the key ideas but use fresh language and clear structure.
-${intent ? `\nI'm creating: ${intent}` : ''}
+      content: `Rewrite this YouTube video transcript as a clean recording script I can record from. Keep the key ideas but use fresh language and clear structure.
+${intent ? `\nI'm creating: ${intent}` : ''}${voiceNote}
 
 Original transcript:
 ${transcript.slice(0, 4000)}
 
-Format with clearly labelled sections (Intro, Main Points, CTA, etc.). Write in first person, conversational tone. Adapt the depth, tone, and format to suit the stated goal.`,
+Format with clearly labelled sections (Hook, Intro, Main Points, CTA, etc.). Write in first person, conversational tone. Adapt depth, tone, and format to suit the stated goal.
+
+After the script, add:
+**5 YouTube Title Options** (vary the hook — curiosity, number, bold claim, how-to, story)
+**3 Thumbnail Concept Ideas** (describe the visual, any text overlay, colour mood, and emotional tone)`,
     }];
   }
 
@@ -321,7 +327,7 @@ Format with clearly labelled sections (Intro, Main Points, CTA, etc.). Write in 
   outEl.innerHTML = '<div class="lab-ai-loading"><span class="lab-ai-spinner"></span> Thinking…</div>';
 
   const result = await new Promise(resolve =>
-    chrome.runtime.sendMessage({ action: 'CLAUDE_API', payload: { messages, maxTokens: 1500 } }, resolve)
+    chrome.runtime.sendMessage({ action: 'CLAUDE_API', payload: { messages, maxTokens: 2048 } }, resolve)
   );
 
   btn.disabled = false;
@@ -366,24 +372,29 @@ async function handleBatchRepurpose(entries) {
     return `--- Video ${i + 1}: ${entry.title || 'Unknown'} ---\nChannel: ${entry.channelName || '?'} | Views: ${entry.views || '?'} | Duration: ${entry.duration || '?'}${trExcerpt}`;
   }).join('\n\n');
 
+  const voiceNote = voiceProfile ? `\nVoice & style to match: ${voiceProfile}` : '';
+
   const messages = [{
     role: 'user',
     content: `You are a YouTube content strategist. I've selected ${entries.length} videos as reference material for creating new content.
-${intent ? `\nMy goal: ${intent}\n` : ''}
+${intent ? `\nMy goal: ${intent}` : ''}${voiceNote}
+
 Here are the reference videos:
 
 ${videosContext}
 
 Based on ALL these videos:
 1. Identify the strongest ideas, hooks, angles, and structures they share or each uniquely offer
-2. Synthesise a content outline that combines the best elements
-3. Write a working script or detailed outline I can record from
+2. Synthesise a complete recording script that combines the best elements — write every word I should say
+3. Format with clearly labelled sections (Hook, Intro, Main Points, CTA, etc.), first person, conversational tone
 
-Format with clearly labelled sections (Hook, Intro, Main Points, CTA, etc.). Write in first person, conversational tone. Tailor everything to the stated goal.`,
+After the script, add:
+**5 YouTube Title Options** (vary the hook — curiosity, number, bold claim, how-to, story)
+**3 Thumbnail Concept Ideas** (describe the visual, any text overlay, colour mood, and emotional tone)`,
   }];
 
   const result = await new Promise(resolve =>
-    chrome.runtime.sendMessage({ action: 'CLAUDE_API', payload: { messages, maxTokens: 2000 } }, resolve)
+    chrome.runtime.sendMessage({ action: 'CLAUDE_API', payload: { messages, maxTokens: 4096 } }, resolve)
   );
 
   btn.disabled = false;
@@ -415,16 +426,21 @@ let searchQuery   = '';
 let labQuery      = '';
 let selectMode    = false;
 let selectedLabIds = new Set();
+let voiceProfile  = '';
 
 function refresh()    { renderInspiration(allEntries, activeFilter, searchQuery); }
 function refreshLab() { renderLab(allLabEntries, transcriptCache, labQuery); }
 
 function updateBatchBar() {
-  const bar   = document.getElementById('lab-batch-bar');
-  const count = document.getElementById('lab-batch-count');
+  const bar          = document.getElementById('lab-batch-bar');
+  const repurposeBtn = document.getElementById('btn-batch-repurpose');
+  const count        = document.getElementById('lab-batch-count');
   const n = selectedLabIds.size;
-  bar.hidden = n === 0;
-  count.textContent = `${n} video${n !== 1 ? 's' : ''} selected`;
+  bar.hidden = !selectMode;                                  // only visible in select mode
+  repurposeBtn.disabled = n === 0;
+  count.textContent = n > 0
+    ? `${n} video${n !== 1 ? 's' : ''} selected`
+    : 'Tap cards to select';
 }
 
 function toggleSelectMode(on) {
@@ -432,10 +448,8 @@ function toggleSelectMode(on) {
   const btn = document.getElementById('btn-lab-select');
   btn.classList.toggle('active', on);
   btn.textContent = on ? 'Done' : 'Select';
-  if (!on) {
-    selectedLabIds.clear();
-    updateBatchBar();
-  }
+  if (!on) selectedLabIds.clear();
+  updateBatchBar();
   refreshLab();
 }
 
@@ -473,8 +487,10 @@ chrome.storage.local.get(['entries', 'labEntries', 'transcripts', 'settings', 'p
   refresh();
   refreshLab();
   const s = result.settings || {};
-  document.getElementById('settings-api-key').value = s.claudeApiKey || '';
-  document.getElementById('settings-model').value   = s.claudeModel  || 'claude-sonnet-4-6';
+  voiceProfile = s.voiceProfile || '';
+  document.getElementById('settings-api-key').value    = s.claudeApiKey    || '';
+  document.getElementById('settings-model').value      = s.claudeModel     || 'claude-sonnet-4-6';
+  document.getElementById('settings-voice-profile').value = s.voiceProfile || '';
   // Auto-switch to Content Lab if triggered by a "Save to Lab" action
   if (result.pendingMode === 'lab') {
     switchToMode('lab');
@@ -569,9 +585,16 @@ document.getElementById('lab-board').addEventListener('click', async (e) => {
     const uid = e.target.dataset.uid;
     const textEl = document.getElementById(`ai-text-${uid}`);
     if (textEl) {
+      const copyBtn = e.target;
       navigator.clipboard.writeText(textEl.textContent).then(() => {
-        e.target.textContent = 'Copied!';
-        setTimeout(() => { e.target.textContent = 'Copy'; }, 2000);
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => { copyBtn.textContent = 'Copy'; }, 2000);
+      }).catch(() => {
+        const ta = document.createElement('textarea');
+        ta.value = textEl.textContent;
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => { copyBtn.textContent = 'Copy'; }, 2000);
       });
     }
     return;
@@ -596,6 +619,30 @@ document.getElementById('lab-board').addEventListener('click', async (e) => {
 document.getElementById('btn-batch-repurpose').addEventListener('click', () => {
   const entries = allLabEntries.filter(e => selectedLabIds.has(e.id));
   if (entries.length) handleBatchRepurpose(entries);
+});
+
+// Copy button inside the batch output panel (lives outside #lab-board)
+document.getElementById('lab-batch-output').addEventListener('click', (e) => {
+  if (e.target.classList.contains('lab-ai-copy')) {
+    const uid = e.target.dataset.uid;
+    const textEl = document.getElementById(`ai-text-${uid}`);
+    if (textEl) {
+      navigator.clipboard.writeText(textEl.textContent).then(() => {
+        e.target.textContent = 'Copied!';
+        setTimeout(() => { e.target.textContent = 'Copy'; }, 2000);
+      }).catch(() => {
+        // Fallback for contexts where clipboard API isn't available
+        const ta = document.createElement('textarea');
+        ta.value = textEl.textContent;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+        e.target.textContent = 'Copied!';
+        setTimeout(() => { e.target.textContent = 'Copy'; }, 2000);
+      });
+    }
+  }
 });
 
 document.getElementById('btn-batch-deselect').addEventListener('click', () => {
@@ -641,8 +688,9 @@ document.getElementById('btn-check-server').addEventListener('click', checkServe
 document.getElementById('btn-save-settings').addEventListener('click', () => {
   const key   = document.getElementById('settings-api-key').value.trim();
   const model = document.getElementById('settings-model').value;
+  voiceProfile  = document.getElementById('settings-voice-profile').value.trim();
   const status = document.getElementById('settings-status');
-  chrome.storage.local.set({ settings: { claudeApiKey: key || null, claudeModel: model } }, () => {
+  chrome.storage.local.set({ settings: { claudeApiKey: key || null, claudeModel: model, voiceProfile: voiceProfile || null } }, () => {
     status.textContent = 'Saved!';
     status.style.color = '#22c55e';
     setTimeout(() => { status.textContent = ''; }, 2000);
