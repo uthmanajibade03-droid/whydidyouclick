@@ -1,4 +1,4 @@
-/* ── Why Did You Click? — Inspiration Board popup ───────────────────────── */
+/* ── Why Did You Click? — Side Panel ─────────────────────────────────────── */
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -13,6 +13,50 @@ body {
   flex-direction: column;
   overflow: hidden;
 }
+
+/* ── Mode navigation ─────────────────────────────────────────────────────── */
+
+.mode-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 10px 0;
+  border-bottom: 2px solid #ebebeb;
+  flex-shrink: 0;
+  background: #fafafa;
+}
+
+.mode-btn {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: #888;
+  padding: 7px 12px;
+  font-family: inherit;
+  transition: color 0.12s, border-color 0.12s;
+  white-space: nowrap;
+}
+.mode-btn:hover { color: #0f0f0f; }
+.mode-btn.active { color: #ff0000; border-bottom-color: #ff0000; }
+.mode-btn-icon { margin-left: auto; font-size: 15px; padding: 7px 8px; }
+
+/* Each panel fills remaining height and scrolls internally */
+#panel-inspiration,
+#panel-lab,
+#panel-settings {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+#panel-inspiration[hidden],
+#panel-lab[hidden],
+#panel-settings[hidden] { display: none; }
 
 /* ── Header ─────────────────────────────────────────────────────────────── */
 
@@ -362,4 +406,233 @@ body {
   background: #fff0f0;
   color: #cc0000;
   border-color: #ffcccc;
+}
+
+/* ── Content Lab ─────────────────────────────────────────────────────────── */
+
+.lab-count-badge {
+  font-size: 11px;
+  color: #aaa;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Lab card */
+.lab-card {
+  border: 1.5px solid #ebebeb;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fff;
+  margin-bottom: 10px;
+  transition: box-shadow 0.15s;
+}
+.lab-card:hover { box-shadow: 0 3px 16px rgba(0,0,0,0.09); }
+
+.lab-card-top {
+  display: flex;
+  gap: 10px;
+  padding: 12px;
+  align-items: flex-start;
+}
+
+.lab-thumb {
+  width: 108px;
+  height: 61px;
+  object-fit: cover;
+  border-radius: 8px;
+  flex-shrink: 0;
+  background: #e5e5e5;
+}
+
+.lab-card-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.lab-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #0f0f0f;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.lab-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.lab-stat {
+  font-size: 10px;
+  color: #606060;
+  background: #f2f2f2;
+  border-radius: 5px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
+.lab-card-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Transcript status badge */
+.transcript-badge {
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 6px;
+  padding: 2px 7px;
+}
+.ts-pending     { background: #fff8e1; color: #f59e0b; }
+.ts-fetched     { background: #f0fdf4; color: #16a34a; }
+.ts-unavailable { background: #fef2f2; color: #dc2626; }
+
+/* Transcript collapsible */
+.lab-transcript {
+  border-top: 1px solid #f2f2f2;
+  padding: 8px 12px;
+}
+.lab-transcript summary {
+  font-size: 11px;
+  font-weight: 600;
+  color: #606060;
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.lab-transcript summary::before { content: '▶'; font-size: 9px; }
+.lab-transcript[open] summary::before { content: '▼'; }
+.lab-transcript-text {
+  font-size: 11px;
+  color: #444;
+  line-height: 1.6;
+  margin-top: 8px;
+  white-space: pre-wrap;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+/* Lab action row */
+.lab-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px 10px;
+  border-top: 1px solid #f2f2f2;
+}
+
+.lab-ai-btn {
+  font-size: 11px;
+  font-weight: 600;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 4px 10px;
+  cursor: not-allowed;
+  background: #fafafa;
+  color: #bbb;
+  font-family: inherit;
+}
+
+.btn-delete-lab {
+  margin-left: auto;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: #ccc;
+  padding: 4px 6px;
+  border-radius: 6px;
+  transition: background 0.12s, color 0.12s;
+}
+.btn-delete-lab:hover { background: #fff0f0; color: #cc0000; }
+
+/* ── Settings panel ──────────────────────────────────────────────────────── */
+
+.settings-body {
+  padding: 16px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-heading {
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f0f0f;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.coming-soon-badge {
+  font-size: 10px;
+  font-weight: 700;
+  background: #f0fdf4;
+  color: #16a34a;
+  border-radius: 6px;
+  padding: 2px 8px;
+}
+
+.settings-desc {
+  font-size: 12px;
+  color: #666;
+  line-height: 1.6;
+}
+
+.settings-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #606060;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.settings-input {
+  width: 100%;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #0f0f0f;
+  outline: none;
+  transition: border-color 0.15s;
+  background: #fff;
+}
+.settings-input:focus { border-color: #ff0000; }
+
+.settings-save-btn {
+  align-self: flex-start;
+  background: #ff0000;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s;
+}
+.settings-save-btn:hover { background: #cc0000; }
+
+.settings-status {
+  font-size: 12px;
+  min-height: 16px;
 }

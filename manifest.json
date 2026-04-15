@@ -1,9 +1,10 @@
 {
   "manifest_version": 3,
   "name": "Why Did You Click?",
-  "version": "1.0.0",
-  "description": "Save reasons why you clicked YouTube videos — by title, thumbnail, or both.",
+  "version": "1.1.0",
+  "description": "Inspiration Board + Content Lab for YouTube creators.",
   "permissions": ["storage", "sidePanel"],
+  "host_permissions": ["https://www.youtube.com/*"],
   "side_panel": {
     "default_path": "popup.html"
   },
@@ -19,6 +20,6 @@
     }
   ],
   "action": {
-    "default_title": "Open Inspiration Board"
+    "default_title": "Open Why Did You Click?"
   }
 }

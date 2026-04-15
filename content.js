@@ -107,6 +107,40 @@
     return { videoId, title, thumbnail, url: href };
   }
 
+  // ─── Stats extraction (watch page only) ──────────────────────────────────
+
+  function extractWatchPageStats() {
+    try {
+      const data = window.ytInitialData;
+      const contents = data?.contents?.twoColumnWatchNextResults?.results?.results?.contents || [];
+      const primary = contents.find(c => c.videoPrimaryInfoRenderer)?.videoPrimaryInfoRenderer;
+      const secondary = contents.find(c => c.videoSecondaryInfoRenderer)?.videoSecondaryInfoRenderer;
+
+      const views = primary?.viewCount?.videoViewCountRenderer?.viewCount?.simpleText || null;
+      // Likes path varies — try a few known paths
+      let likes = null;
+      try {
+        const btns = primary?.videoActions?.menuRenderer?.topLevelButtons || [];
+        const likeBtn = btns[0];
+        likes =
+          likeBtn?.segmentedLikeDislikeButtonViewModel?.likeButtonViewModel
+            ?.likeButtonViewModel?.toggleButtonViewModel?.toggleButtonViewModel
+            ?.defaultButtonViewModel?.buttonViewModel?.title ||
+          likeBtn?.toggleButtonRenderer?.defaultText?.accessibility?.accessibilityData?.label ||
+          null;
+      } catch (_) {}
+
+      const channelName =
+        secondary?.owner?.videoOwnerRenderer?.title?.runs?.[0]?.text || null;
+      const duration =
+        document.querySelector('.ytp-time-duration')?.textContent?.trim() || null;
+
+      return { views, likes, channelName, duration };
+    } catch (_) {
+      return { views: null, likes: null, channelName: null, duration: null };
+    }
+  }
+
   // ─── Persist ─────────────────────────────────────────────────────────────
 
   function saveEntry(videoInfo, type, note) {
@@ -126,6 +160,37 @@
         entries.unshift(entry);
         if (entries.length > 1000) entries.splice(1000);
         chrome.storage.local.set({ entries }, resolve);
+      });
+    });
+  }
+
+  function saveLabEntry(videoInfo) {
+    return new Promise((resolve) => {
+      const stats = extractWatchPageStats();
+      const entry = {
+        id: Date.now(),
+        videoId: videoInfo.videoId,
+        url: videoInfo.url,
+        date: new Date().toISOString(),
+        title: videoInfo.title,
+        thumbnail: videoInfo.thumbnail,
+        views: stats.views,
+        likes: stats.likes,
+        channelName: stats.channelName,
+        duration: stats.duration,
+        transcriptStatus: 'pending',
+      };
+      chrome.storage.local.get(['labEntries'], (result) => {
+        const labEntries = result.labEntries || [];
+        // Avoid duplicates — remove previous save of same videoId
+        const filtered = labEntries.filter(e => e.videoId !== entry.videoId);
+        filtered.unshift(entry);
+        if (filtered.length > 200) filtered.splice(200);
+        chrome.storage.local.set({ labEntries: filtered }, () => {
+          // Fire-and-forget transcript fetch via background service worker
+          chrome.runtime.sendMessage({ action: 'FETCH_TRANSCRIPT', videoId: videoInfo.videoId });
+          resolve();
+        });
       });
     });
   }
@@ -306,6 +371,7 @@
           <div class="wdyc-footer">
             <button class="wdyc-btn-just-watch">Just Watch</button>
             <div class="wdyc-footer-main">
+              <button class="wdyc-btn wdyc-btn-lab" title="Save to Content Lab (gets transcript + stats)">🧪 Save to Lab</button>
               <button class="wdyc-btn wdyc-btn-skip">Save &amp; Watch</button>
               <button class="wdyc-btn wdyc-btn-save" disabled>Save</button>
             </div>
@@ -334,6 +400,7 @@
 
       saveBtn.addEventListener('click', () => doSave(false));
       overlay.querySelector('.wdyc-btn-skip').addEventListener('click', () => doSave(true));
+      overlay.querySelector('.wdyc-btn-lab').addEventListener('click', () => close({ save: false, lab: true, watch: false }));
       overlay.querySelector('.wdyc-btn-just-watch').addEventListener('click', () => close({ save: false, watch: true }));
       overlay.querySelector('.wdyc-close').addEventListener('click', () => close({ save: false, watch: false }));
       overlay.addEventListener('click', (e) => { if (e.target === overlay) close({ save: false, watch: false }); });
@@ -369,6 +436,7 @@
 
     const result = await showModal(videoInfo);
     if (result.save) await saveEntry(videoInfo, result.type, result.note);
+    if (result.lab)  await saveLabEntry(videoInfo);
     if (result.watch) window.location.href = videoInfo.url;
   }, true);
 
