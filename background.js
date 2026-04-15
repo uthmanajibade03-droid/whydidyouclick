@@ -27,7 +27,31 @@ async function writeTranscript(videoId, text) {
 //
 // YouTube's /api/timedtext endpoint requires signed params we don't have.
 // The real caption track URLs live inside the page's ytInitialPlayerResponse.
-// We fetch the watch page, extract captionTracks, then fetch the real URL.
+// We fetch the watch page, find "captionTracks":[…] with a bracket-counter
+// (regex fails on large nested JSON), parse the array, then fetch the real URL.
+
+function extractJsonArray(html, marker) {
+  const idx = html.indexOf(marker);
+  if (idx === -1) return null;
+  const start = idx + marker.length;
+  if (html[start] !== '[') return null;
+  let depth = 0, inStr = false, esc = false;
+  for (let i = start; i < html.length; i++) {
+    const c = html[i];
+    if (esc)        { esc = false; continue; }
+    if (c === '\\') { esc = true;  continue; }
+    if (c === '"')  { inStr = !inStr; continue; }
+    if (inStr)      continue;
+    if (c === '[' || c === '{') depth++;
+    else if (c === ']' || c === '}') {
+      if (--depth === 0) {
+        try { return JSON.parse(html.slice(start, i + 1)); }
+        catch (_) { return null; }
+      }
+    }
+  }
+  return null;
+}
 
 async function fetchTranscriptViaPage(videoId) {
   try {
@@ -37,12 +61,7 @@ async function fetchTranscriptViaPage(videoId) {
     if (!res.ok) return null;
     const html = await res.text();
 
-    // Pull out the captionTracks array from the embedded JSON
-    const m = html.match(/"captionTracks":(\[.+?\]),"(?:audioTracks|isDefaultAudioTrack|translationLanguages)"/s);
-    if (!m) return null;
-
-    let tracks;
-    try { tracks = JSON.parse(m[1]); } catch (_) { return null; }
+    const tracks = extractJsonArray(html, '"captionTracks":');
     if (!tracks?.length) return null;
 
     // Prefer manual English > auto-generated English > any English > first track

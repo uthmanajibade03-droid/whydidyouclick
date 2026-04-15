@@ -104,12 +104,28 @@
       }
     }
 
-    return { videoId, title, thumbnail, url: href };
+    // ── F: duration from thumbnail overlay (the badge on the card image) ──
+    let duration = null;
+    const container2 = link.closest(CONTAINER_SEL);
+    if (container2) {
+      // ytd-thumbnail-overlay-time-status-renderer holds the duration badge
+      const durEl = container2.querySelector(
+        'ytd-thumbnail-overlay-time-status-renderer span, ' +
+        '#overlays .ytd-thumbnail-overlay-time-status-renderer, ' +
+        'span.ytd-thumbnail-overlay-time-status-renderer'
+      );
+      if (durEl) {
+        // aria-label has verbose text like "14 minutes, 41 seconds" — use textContent for "14:41"
+        duration = cleanText(durEl.textContent) || null;
+      }
+    }
+
+    return { videoId, title, thumbnail, url: href, duration };
   }
 
   // ─── Stats extraction (watch page only) ──────────────────────────────────
 
-  function extractWatchPageStats() {
+  function extractWatchPageStats(videoId) {
     try {
       const data = window.ytInitialData;
       const contents = data?.contents?.twoColumnWatchNextResults?.results?.results?.contents || [];
@@ -117,7 +133,6 @@
       const secondary = contents.find(c => c.videoSecondaryInfoRenderer)?.videoSecondaryInfoRenderer;
 
       const views = primary?.viewCount?.videoViewCountRenderer?.viewCount?.simpleText || null;
-      // Likes path varies — try a few known paths
       let likes = null;
       try {
         const btns = primary?.videoActions?.menuRenderer?.topLevelButtons || [];
@@ -132,8 +147,14 @@
 
       const channelName =
         secondary?.owner?.videoOwnerRenderer?.title?.runs?.[0]?.text || null;
-      const duration =
-        document.querySelector('.ytp-time-duration')?.textContent?.trim() || null;
+
+      // Only read player duration when we're watching THIS exact video —
+      // otherwise .ytp-time-duration shows the currently-playing video's length,
+      // not the video being saved (causing every sidebar save to copy that duration).
+      const currentId = new URLSearchParams(window.location.search).get('v');
+      const duration = (currentId && currentId === videoId)
+        ? (document.querySelector('.ytp-time-duration')?.textContent?.trim() || null)
+        : null;
 
       return { views, likes, channelName, duration };
     } catch (_) {
@@ -205,7 +226,7 @@
   }
 
   async function saveLabEntry(videoInfo) {
-    const stats = extractWatchPageStats();
+    const stats = extractWatchPageStats(videoInfo.videoId);
     const entry = {
       id: Date.now(),
       videoId: videoInfo.videoId,
@@ -216,7 +237,9 @@
       views: stats.views,
       likes: stats.likes,
       channelName: stats.channelName,
-      duration: stats.duration,
+      // Card thumbnail overlay is the accurate source; player duration only
+      // used when we're actually on this video's own watch page.
+      duration: videoInfo.duration || stats.duration,
       transcriptStatus: 'pending',
     };
 
