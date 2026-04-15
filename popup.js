@@ -13,13 +13,14 @@ function escapeHtml(str) {
 
 function formatDate(iso) {
   const d = new Date(iso);
+  if (isNaN(d)) return '';
   const now = new Date();
   const diffSecs = Math.floor((now - d) / 1000);
   if (diffSecs < 60)   return 'Just now';
   if (diffSecs < 3600) return `${Math.floor(diffSecs / 60)}m ago`;
   const diffDays = Math.floor((now - d) / 86400000);
-  if (diffDays === 0)  return 'Today ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  if (diffDays === 1)  return 'Yesterday';
+  if (diffDays === 0)  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+  if (diffDays === 1)  return 'Yesterday ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
   if (diffDays < 7)   return `${diffDays} days ago`;
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
@@ -308,7 +309,7 @@ function sendToLab(entry, btn) {
     id: Date.now(),
     videoId: entry.videoId,
     url: entry.url,
-    date: new Date().toISOString(),
+    date: entry.date,   // preserve original discovery date
     title: entry.title || '',
     thumbnail: entry.thumbnail || `https://i.ytimg.com/vi/${entry.videoId}/mqdefault.jpg`,
     views: null, likes: null, channelName: null, duration: null,

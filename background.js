@@ -1,7 +1,7 @@
 // Open the side panel when the extension icon is clicked
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
 
-// ─── Shared eviction ──────────────────────────────────────────────────────────
+// ─── Shared helpers ───────────────────────────────────────────────────────────
 
 function evictOldTranscripts(transcripts) {
   const keys = Object.keys(transcripts);
@@ -23,27 +23,52 @@ async function writeTranscript(videoId, text) {
   await chrome.storage.local.set({ transcripts });
 }
 
-// ─── FETCH_TRANSCRIPT — background fetches from YouTube timedtext API ─────────
+// ─── Transcript fetch — watch page parsing (most reliable) ───────────────────
+//
+// YouTube's /api/timedtext endpoint requires signed params we don't have.
+// The real caption track URLs live inside the page's ytInitialPlayerResponse.
+// We fetch the watch page, extract captionTracks, then fetch the real URL.
 
-async function fetchTranscript(videoId) {
-  const base = `https://www.youtube.com/api/timedtext?v=${videoId}&fmt=json3`;
-  async function tryFetch(url) {
-    const res = await fetch(url);
+async function fetchTranscriptViaPage(videoId) {
+  try {
+    const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+      headers: { 'Accept-Language': 'en-US,en;q=0.9' },
+    });
     if (!res.ok) return null;
-    const json = await res.json();
+    const html = await res.text();
+
+    // Pull out the captionTracks array from the embedded JSON
+    const m = html.match(/"captionTracks":(\[.+?\]),"(?:audioTracks|isDefaultAudioTrack|translationLanguages)"/s);
+    if (!m) return null;
+
+    let tracks;
+    try { tracks = JSON.parse(m[1]); } catch (_) { return null; }
+    if (!tracks?.length) return null;
+
+    // Prefer manual English > auto-generated English > any English > first track
+    const track =
+      tracks.find(t => t.languageCode === 'en' && t.kind !== 'asr') ||
+      tracks.find(t => t.languageCode === 'en') ||
+      tracks.find(t => t.languageCode?.startsWith('en')) ||
+      tracks[0];
+
+    if (!track?.baseUrl) return null;
+
+    const capRes = await fetch(track.baseUrl + '&fmt=json3');
+    if (!capRes.ok) return null;
+    const json = await capRes.json();
     const text = (json.events || [])
       .flatMap(e => (e.segs || []).map(s => s.utf8 || ''))
       .join(' ').replace(/\s+/g, ' ').trim();
     return text || null;
+  } catch (_) {
+    return null;
   }
-  let text = await tryFetch(base + '&lang=en');
-  if (!text) text = await tryFetch(base + '&tlang=en');
-  return text;
 }
 
 async function handleFetchTranscript(videoId, sendResponse) {
   try {
-    const text = await fetchTranscript(videoId);
+    const text = await fetchTranscriptViaPage(videoId);
     await writeTranscript(videoId, text);
     sendResponse({ ok: true, unavailable: !text });
   } catch (err) {
