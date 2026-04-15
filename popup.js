@@ -53,6 +53,7 @@ function buildThumbnailCard(entry) {
       <img src="${escapeHtml(entry.thumbnail)}" alt="Thumbnail" onerror="this.closest('.card-img-wrap').classList.add('img-error')">
       <div class="card-overlay">
         <a href="${escapeHtml(entry.url)}" target="_blank" class="btn-watch">▶ Watch</a>
+        <button class="btn-send-lab" data-id="${entry.id}" title="Send to Content Lab">🧪</button>
         <button class="btn-delete" data-id="${entry.id}">✕</button>
       </div>
     </div>
@@ -81,6 +82,7 @@ function buildTitleCard(entry) {
     </div>
     <div class="title-row-actions">
       <a href="${escapeHtml(entry.url)}" target="_blank" class="btn-watch-sm" title="Watch">▶</a>
+      <button class="btn-send-lab" data-id="${entry.id}" title="Send to Content Lab">🧪</button>
       <button class="btn-delete" data-id="${entry.id}" title="Delete">✕</button>
     </div>
   `;
@@ -227,6 +229,34 @@ let labQuery      = '';
 function refresh()    { renderInspiration(allEntries, activeFilter, searchQuery); }
 function refreshLab() { renderLab(allLabEntries, transcriptCache, labQuery); }
 
+function sendToLab(entry, btn) {
+  const labEntry = {
+    id: Date.now(),
+    videoId: entry.videoId,
+    url: entry.url,
+    date: new Date().toISOString(),
+    title: entry.title || '',
+    thumbnail: entry.thumbnail || `https://i.ytimg.com/vi/${entry.videoId}/mqdefault.jpg`,
+    views: null,
+    likes: null,
+    channelName: null,
+    duration: null,
+    transcriptStatus: 'pending',
+  };
+  chrome.storage.local.get(['labEntries'], (result) => {
+    const labEntries = result.labEntries || [];
+    const filtered = labEntries.filter(e => e.videoId !== labEntry.videoId);
+    filtered.unshift(labEntry);
+    if (filtered.length > 200) filtered.splice(200);
+    chrome.storage.local.set({ labEntries: filtered }, () => {
+      chrome.runtime.sendMessage({ action: 'FETCH_TRANSCRIPT', videoId: labEntry.videoId });
+      allLabEntries = filtered;
+      refreshLab();
+      if (btn) { btn.textContent = '✅'; btn.disabled = true; }
+    });
+  });
+}
+
 // Initial load
 chrome.storage.local.get(['entries', 'labEntries', 'transcripts', 'settings'], (result) => {
   allEntries      = result.entries      || [];
@@ -265,6 +295,12 @@ document.getElementById('search').addEventListener('input', (e) => {
 });
 
 document.getElementById('board').addEventListener('click', (e) => {
+  if (e.target.classList.contains('btn-send-lab')) {
+    const id = Number(e.target.dataset.id);
+    const entry = allEntries.find(en => en.id === id);
+    if (entry) sendToLab(entry, e.target);
+    return;
+  }
   if (!e.target.classList.contains('btn-delete')) return;
   const id = Number(e.target.dataset.id);
   allEntries = allEntries.filter(entry => entry.id !== id);

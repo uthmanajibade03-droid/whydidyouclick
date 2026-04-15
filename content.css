@@ -291,6 +291,13 @@
 }
 .wdyc-btn:active { transform: scale(0.97); }
 
+.wdyc-btn-lab {
+  background: #e8f5e9;
+  color: #2e7d32;
+  border: 1.5px solid #a5d6a7;
+}
+.wdyc-btn-lab:hover { background: #c8e6c9; border-color: #81c784; color: #1b5e20; }
+
 .wdyc-btn-skip {
   background: #f2f2f2;
   color: #606060;
